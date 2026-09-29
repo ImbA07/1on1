@@ -20,8 +20,8 @@ interface ChainParams {
 
 const PARAMS: Record<string, ChainParams> = {
   cape: { stiff: [1, 0.05, 0.03, 0.022, 0.018], damping: 0.975, gravity: 9.8, colliders: ['torso', 'hips', 'thighL', 'thighR', 'shinL', 'shinR', 'scab'], radius: 0.02, cross: true },
-  tabF: { stiff: [1, 0.07, 0.045, 0.035], damping: 0.97, gravity: 9.8, colliders: ['hips', 'thighL', 'thighR', 'shinL', 'shinR'], radius: 0.032, cross: true },
-  tabB: { stiff: [1, 0.07, 0.045, 0.035], damping: 0.97, gravity: 9.8, colliders: ['hips', 'thighL', 'thighR', 'shinL', 'shinR'], radius: 0.032, cross: true },
+  tabF: { stiff: [1, 0.07, 0.045, 0.035], damping: 0.97, gravity: 9.8, colliders: ['thighL', 'thighR', 'shinL', 'shinR'], radius: 0.032, cross: true },
+  tabB: { stiff: [1, 0.07, 0.045, 0.035], damping: 0.97, gravity: 9.8, colliders: ['thighL', 'thighR', 'shinL', 'shinR'], radius: 0.032, cross: true },
   plume: { stiff: [1, 0.3, 0.16, 0.1], damping: 0.95, gravity: 4, colliders: ['head'], radius: 0.01, cross: false },
   scab: { stiff: [1, 0.035], damping: 0.955, gravity: 9.8, colliders: ['thighL', 'shinL'], radius: 0.03, cross: false },
 };

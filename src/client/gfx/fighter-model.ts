@@ -12,8 +12,9 @@ export const ARMOR_GROUPS = ['body', 'helmet', 'torso', 'shoulders', 'arms', 'le
 export type ArmorGroup = (typeof ARMOR_GROUPS)[number];
 
 const C = {
-  steel: 0xb9bfc6,
-  steelDark: 0x7e848c,
+  steel: 0xaab0b8,
+  steelLame: 0x969ca5,
+  steelDark: 0x7a8088,
   brass: 0xb38d4e,
   bronze: 0x9a7240,
   leatherDark: 0x3a2518,
@@ -31,14 +32,12 @@ const C = {
   sole: 0x24190f,
   lip: 0x6a3428,
   eye: 0x241812,
-  eyeWhite: 0xcfc3b0,
 };
 
 interface Ctx {
   b: FighterMeshBuilder;
   tier: ArmorTier;
   accent: THREE.Color;
-  accentDark: THREE.Color;
   accentCape: THREE.Color;
   accentLight: THREE.Color;
 }
@@ -805,7 +804,7 @@ function buildCuirass(c: Ctx): void {
         },
       },
     );
-    c.b.add(g, { ...METAL, color: C.steel, group: 'torso', weights: i === 0 ? vblend('hips', 'spine', 1.02, 1.07) : rigid('hips') });
+    c.b.add(g, { ...METAL, color: i === 1 ? C.steelLame : C.steel, group: 'torso', weights: i === 0 ? vblend('hips', 'spine', 1.02, 1.07) : rigid('hips') });
     const mid = rr[0]!;
     brass.push(...rivetsOnRing({ ...mid, y: mid.y - 0.018, rx: mid.rx + 0.004, rzF: mid.rzF! + 0.004, rzB: mid.rzB! + 0.004, cz }, [-1.2, -0.45, 0.45, 1.2, 2.0, 2.7, 3.58, 4.28], 0.003, 0.0055));
   });
@@ -953,17 +952,16 @@ function buildBelts(c: Ctx): void {
   c.b.add(tongue, { ...LEATHER, color: C.leatherDark, group: 'torso', bone: 'hips' });
 
   // Beutel (rechts vorne an der Huefte)
-  const pouch = mergeList([
-    xf(box(0.085, 0.09, 0.036), { t: [0.17, 0.87, -0.1], r: [0, 0.9, 0.05] }),
-  ]);
-  const flap = xf(box(0.092, 0.05, 0.012), { t: [0.182, 0.895, -0.112], r: [-0.12, 0.9, 0.05] });
+  // Beutel hinten rechts
+  const pouch = xf(box(0.085, 0.085, 0.034), { t: [0.118, 0.875, 0.143], r: [0, -0.5, 0] });
+  const flap = xf(box(0.09, 0.048, 0.01), { t: [0.124, 0.9, 0.16], r: [0.12, -0.5, 0] });
   c.b.add(pouch, { ...LEATHER, color: C.leatherTan, group: 'torso', bone: 'hips' });
   c.b.add(flap, { ...LEATHER, color: C.leather, group: 'torso', bone: 'hips' });
-  c.b.add(xf(octa(0.008), { t: [0.19, 0.878, -0.123] }), { ...BRASS, color: C.brass, group: 'torso', bone: 'hips' });
+  c.b.add(xf(octa(0.007), { t: [0.128, 0.884, 0.167] }), { ...BRASS, color: C.brass, group: 'torso', bone: 'hips' });
 
-  // Dolch (Rondelldolch) rechts hinten
-  const dA = v3(0.185, 0.93, 0.07);
-  const dB = v3(0.205, 0.68, 0.14);
+  // Dolch (Rondelldolch) rechts an der Seite
+  const dA = v3(0.196, 0.93, 0.035);
+  const dB = v3(0.222, 0.69, 0.125);
   const sheath = tube([dA, dA.clone().lerp(dB, 0.5), dB], [
     [0.012, 0.02],
     [0.011, 0.016],
@@ -1107,25 +1105,6 @@ function buildPauldrons(c: Ctx): void {
       { segs: 18, thickness: 0.004 },
     ),
   );
-  // Brechrand (Haute-piece): aufgestellter Kragen zum Hals hin
-  const hp = loft(
-    [
-      { y: 1.47, rx: 0.056, rzF: 0.064, rzB: 0.06, cx: cx - 0.012, cz },
-      { y: 1.53, rx: 0.052, rzF: 0.06, rzB: 0.056, cx: cx - 0.016, cz },
-      { y: 1.548, rx: 0.056, rzF: 0.064, rzB: 0.06, cx: cx - 0.017, cz },
-    ],
-    { segs: 8, arc: [-Math.PI / 2 - 1.0, -Math.PI / 2 + 1.0], thickness: 0.005 },
-  );
-  lames.push(hp);
-  brass.push(
-    loft(
-      [
-        { y: 1.54, rx: 0.058, rzF: 0.066, rzB: 0.062, cx: cx - 0.017, cz },
-        { y: 1.552, rx: 0.058, rzF: 0.066, rzB: 0.062, cx: cx - 0.017, cz },
-      ],
-      { segs: 8, arc: [-Math.PI / 2 - 1.0, -Math.PI / 2 + 1.0], thickness: 0.004 },
-    ),
-  );
   const pW = (S: Side): WeightFn => (p) => {
     const t = smoothstep(1.46, 1.29, p.y);
     const up = 0.3 + 0.7 * t;
@@ -1134,7 +1113,9 @@ function buildPauldrons(c: Ctx): void {
       ['upperArm' + S, up],
     ];
   };
-  both(c, mergeList(lames), (S) => ({ ...METAL, color: C.steel, group: 'shoulders', weights: pW(S) }));
+  const domeGeo = lames.shift()!;
+  both(c, domeGeo, (S) => ({ ...METAL, color: C.steel, group: 'shoulders', weights: pW(S) }));
+  both(c, mergeList(lames), (S) => ({ ...METAL, color: C.steelLame, group: 'shoulders', weights: pW(S) }));
   both(c, mergeList(brass), (S) => ({ ...BRASS, color: C.brass, group: 'shoulders', weights: pW(S) }));
   // Riemen ueber der Schulterkuppel
   const strap = loft(
@@ -1502,18 +1483,6 @@ function buildCape(c: Ctx): void {
       else if (u < 0.025 || u > 0.975 || v > 0.965) out.copy(trim);
     },
   });
-  // Kragenwulst oben
-  const collarPts: THREE.Vector3[] = [];
-  const collarR: [number, number][] = [];
-  for (let i = 0; i <= 10; i++) {
-    const p = point(i / 10, 0);
-    p.y += 0.008;
-    p.z += 0.004;
-    collarPts.push(p);
-    collarR.push([0.014, 0.014]);
-  }
-  const collar = tube(collarPts, collarR, { segs: 6, capStart: true, capEnd: true, side: v3(0, 1, 0) });
-  c.b.add(collar, { ...CLOTH, color: c.accentCape.clone().multiplyScalar(0.8), group: 'cape', weights: capeW() });
   // Wappen auf dem Ruecken
   const ch = charge(0.075);
   const pc = point(0.5, 0.3);
@@ -1770,10 +1739,9 @@ export function buildFighterModel(b: FighterMeshBuilder, accentHex: number, tier
   const accent = new THREE.Color(accentHex);
   // etwas erdiger: leicht Richtung Braun ziehen
   accent.lerp(new THREE.Color(0x5a4630), 0.12);
-  const accentDark = accent.clone().multiplyScalar(0.6);
   const accentCape = accent.clone().multiplyScalar(0.72);
   const accentLight = accent.clone().lerp(new THREE.Color(0xffffff), 0.08).multiplyScalar(1.15);
-  const c: Ctx = { b, tier, accent, accentDark, accentCape, accentLight };
+  const c: Ctx = { b, tier, accent, accentCape, accentLight };
 
   buildHead(c);
   buildBaseBody(c);

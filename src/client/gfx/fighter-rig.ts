@@ -102,9 +102,9 @@ export const CHAINS: ChainDef[] = [
     name: 'cape',
     anchor: 'chest',
     columns: [
-      capeColumn(-0.2, 0.1, -0.29, 0.2, 1.44, 0.42, CAPE_ROWS),
-      capeColumn(0, 0.165, 0, 0.27, 1.44, 0.42, CAPE_ROWS),
-      capeColumn(0.2, 0.1, 0.29, 0.2, 1.44, 0.42, CAPE_ROWS),
+      capeColumn(-0.2, 0.1, -0.29, 0.2, 1.43, 0.42, CAPE_ROWS),
+      capeColumn(0, 0.152, 0, 0.27, 1.43, 0.42, CAPE_ROWS),
+      capeColumn(0.2, 0.1, 0.29, 0.2, 1.43, 0.42, CAPE_ROWS),
     ],
   },
   {
@@ -134,8 +134,8 @@ export const CHAINS: ChainDef[] = [
     anchor: 'hips',
     columns: [
       [
-        [-0.215, 0.92, -0.05],
-        [-0.235, 0.14, 0.26],
+        [-0.212, 0.92, -0.005],
+        [-0.238, 0.15, 0.31],
       ],
     ],
   },

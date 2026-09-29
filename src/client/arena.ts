@@ -159,7 +159,7 @@ export function buildArena(scene: THREE.Scene, mood?: ArenaMood): Arena {
   buildPalas(b, info, rand);
   buildStands(b, info, rand);
   buildKeep(b, info, rand);
-  buildChapel(b, info);
+  buildChapel(b);
   buildHouses(b, info, rand);
   // Wachen auf dem Wehrgang
   for (const a of [-0.75, 1.55, -2.6, 2.45, -1.65]) {

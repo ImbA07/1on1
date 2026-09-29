@@ -33,6 +33,10 @@ class Spring {
     private k: number,
     private zeta: number,
   ) {}
+  reset(value: number): void {
+    this.x = value;
+    this.v = 0;
+  }
   update(target: number, dt: number): number {
     const c = 2 * Math.sqrt(this.k) * this.zeta;
     // halbimplizit, stabil bei grossen Schritten
@@ -121,7 +125,6 @@ export class FighterAnimator {
   private lvx = 0;
   private lvz = 0;
   private accF = 0; // Beschleunigung vorwaerts (m/s^2, geglaettet)
-  private accR = 0;
   private dirX = 0;
   private dirZ = -1;
   private moveAmp = 0;
@@ -140,6 +143,7 @@ export class FighterAnimator {
   private readonly rollSpring = new Spring(55, 0.55);
   private readonly swordSpring = new Spring(90, 0.35);
   private prevLvz = 0;
+  private first = true;
   private readonly feet: [FootState, FootState] = [
     { x: 0, z: 0, lift: 0, pitch: 0, yaw: 0, toe: 0 },
     { x: 0, z: 0, lift: 0, pitch: 0, yaw: 0, toe: 0 },
@@ -181,6 +185,12 @@ export class FighterAnimator {
     const B = this.B;
 
     // ---------------- Geschwindigkeit im Figurenraum ----------------
+    // Schutz gegen Ausreisser (z. B. Ruckler bei der Geschwindigkeitsschaetzung)
+    const vIn = Math.hypot(vx, vz);
+    if (vIn > 6) {
+      vx *= 6 / vIn;
+      vz *= 6 / vIn;
+    }
     const sy = Math.sin(yaw);
     const cy = Math.cos(yaw);
     const fwd = -vx * sy - vz * cy;
@@ -201,7 +211,6 @@ export class FighterAnimator {
     const aF = (-(this.lvz - this.prevLvz)) / dt;
     this.prevLvz = this.lvz;
     this.accF = approach(this.accF, clamp(aF, -12, 12), 7, dt);
-    this.accR = approach(this.accR, 0, 5, dt);
 
     const ampT = smooth01((speed - 0.06) / 0.55);
     this.moveAmp = approach(this.moveAmp, ampT, 7, dt);
@@ -243,7 +252,7 @@ export class FighterAnimator {
     const beta = lerp(0.6, 0.38, run);
     const R = Math.min(0.95, (speed * beta) / Math.max(0.5, this.freq));
 
-    const liftH = lerp(0.085, 0.2, run) * amp + 0.055 * turn * (1 - amp);
+    const liftH = lerp(0.085, 0.2, run) * amp * clamp(0.4 + speed / 4, 0.4, 1) + 0.055 * turn * (1 - amp);
     const heelP = lerp(0.32, 0.18, run);
     const toeP = lerp(0.5, 0.75, run);
 
@@ -281,7 +290,7 @@ export class FighterAnimator {
         lift = liftH * shape;
         pitch = -toeP * (1 - smooth01(s / 0.45)) + heelP * smooth01((s - 0.6) / 0.4) - 0.25 * shape * run;
       }
-      pitch *= fwdness * amp + (1 - amp) * 0;
+      pitch *= fwdness * amp;
       st.x = bx + this.dirX * o;
       st.z = bz + this.dirZ * o;
       st.lift = lift * (amp > 0.01 || turn > 0.01 ? 1 : 0);
@@ -299,11 +308,16 @@ export class FighterAnimator {
     const walkBob = -Math.cos(4 * Math.PI * psL) * 0.017 * amp * (1 - run);
     const runBob = -Math.cos(4 * Math.PI * (psL - 0.19)) * 0.032 * run;
     const stepBob = -Math.abs(Math.sin(TAU * psL)) * 0.012 * turn * (1 - amp);
-    const baseY = this.rest.hips!.y - 0.035 - 0.012 * amp - 0.035 * run - 0.004 * idle * (1 + shift) - 0.012 * this.exertion;
+    const baseY = this.rest.hips!.y - 0.035 - 0.012 * amp - 0.035 * run - 0.004 * idle * (1 + shift) - 0.012 * this.exertion - 0.014 * Math.min(1, Math.abs(this.accF) / 6);
+    if (this.first) this.hipsSpring.reset(baseY);
     const hy = this.hipsSpring.update(baseY, dt) + walkBob + runBob + stepBob;
     const swayX = (-Math.sin(TAU * psL) * 0.028 * amp * (1 - 0.6 * run) * (1 - Math.abs(side))) + idle * 0.022 * shift;
 
     const leanT = -(0.06 * amp * Math.max(0, fwdness) + 0.2 * run) + 0.03 * amp * Math.max(0, -fwdness) - clamp(this.accF, -6, 6) * 0.022;
+    if (this.first) {
+      this.leanSpring.reset(leanT);
+      this.first = false;
+    }
     const lean = this.leanSpring.update(leanT, dt);
     const rollT = -Math.sin(TAU * psL) * 0.045 * amp + idle * shift * -0.03 - side * amp * 0.03;
     const roll = this.rollSpring.update(rollT, dt);

@@ -40,11 +40,20 @@ export function vnoise(x: number, y: number, seed = 0, period = 0): number {
   const yi = Math.floor(y);
   const xf = x - xi;
   const yf = y - yi;
-  const w = (i: number) => (period > 0 ? ((i % period) + period) % period : i);
-  const a = hash2(w(xi), w(yi), seed);
-  const b = hash2(w(xi + 1), w(yi), seed);
-  const c = hash2(w(xi), w(yi + 1), seed);
-  const d = hash2(w(xi + 1), w(yi + 1), seed);
+  let x0 = xi;
+  let y0 = yi;
+  let x1 = xi + 1;
+  let y1 = yi + 1;
+  if (period > 0) {
+    x0 = ((x0 % period) + period) % period;
+    y0 = ((y0 % period) + period) % period;
+    x1 = ((x1 % period) + period) % period;
+    y1 = ((y1 % period) + period) % period;
+  }
+  const a = hash2(x0, y0, seed);
+  const b = hash2(x1, y0, seed);
+  const c = hash2(x0, y1, seed);
+  const d = hash2(x1, y1, seed);
   const u = xf * xf * (3 - 2 * xf);
   const v = yf * yf * (3 - 2 * yf);
   return lerp(lerp(a, b, u), lerp(c, d, u), v);

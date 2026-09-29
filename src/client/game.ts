@@ -77,7 +77,8 @@ export class Game {
     private readonly hud: HudHooks,
   ) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Auf Bildschirmen mit sehr hoher Pixeldichte nicht ueber 1.5 gehen: spart viel Rechenzeit
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

@@ -308,7 +308,7 @@ export function getFighterMaterials(): FighterMaterials {
     vertexColors: true,
     flatShading: true,
     metalness: 0.8,
-    roughness: 0.46,
+    roughness: 0.5,
     map: metalTex.map,
     roughnessMap: metalTex.rough,
     envMap: env,

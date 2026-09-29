@@ -679,7 +679,7 @@ export function buildKeep(b: Buckets, info: StructureInfo, rand: Rand): void {
   info.pennants.push({ m: mat(cx, H + 1.8 + 7.5 + 2.2, cz, WIND_RY + (rand() - 0.5) * 0.4), len: 3.4, cell: 0 });
 }
 
-export function buildChapel(b: Buckets, info: StructureInfo): void {
+export function buildChapel(b: Buckets): void {
   const a = 0.62;
   const [cx, cz] = polarPos(a, 31);
   const C = mat(cx, 0, cz, a);
@@ -694,7 +694,6 @@ export function buildChapel(b: Buckets, info: StructureInfo): void {
   b.add('iron', part(new THREE.IcosahedronGeometry(0.22, 0), at(C, 0, 27.2, 0), { color: 0xc09a40, uv: 'none' }));
   b.add('iron', part(box(0.05, 1.1, 0.05), at(C, 0, 27.9, 0), { color: 0xc09a40, uv: 'none' }));
   b.add('iron', part(box(0.55, 0.05, 0.05), at(C, 0, 28.1, 0), { color: 0xc09a40, uv: 'none' }));
-  void info;
 }
 
 export function buildHouses(b: Buckets, info: StructureInfo, rand: Rand): void {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { fbm, mulberry32, smoothstep, vnoise, clamp01, WALL_INNER } from './arena-common.js';
+import { fbm, mulberry32, smoothstep, vnoise, clamp01 } from './arena-common.js';
 
 // Prozedurale Texturen. "Gepackt" heisst: R/G = Normalen-XY, B = Hoehe, A = Zufallswert pro Stein.
 // So reicht eine einzige Textur pro Oberflaeche (Farbe entsteht im Shader aus Palette + Hoehe).
@@ -63,7 +63,7 @@ export function cobbleTexture(tile: number): THREE.DataTexture {
       let best: [number, number, number, number, number] = pts[0]!;
       let bx = 0;
       let by = 0;
-      for (let oj = -2; oj <= 2; oj++) {
+      for (let oj = -1; oj <= 1; oj++) {
         for (let oi = -2; oi <= 2; oi++) {
           const ii = ci + oi;
           const jj = cj + oj;
@@ -85,7 +85,7 @@ export function cobbleTexture(tile: number): THREE.DataTexture {
         }
       }
       const edge = Math.sqrt(d2) - Math.sqrt(d1);
-      const n = fbm(px * 3, py * 3, 5, 3, cells * 3);
+      const n = fbm(px * 3, py * 3, 5, 2, cells * 3);
       const e = edge + (n - 0.5) * 0.12;
       let h = smoothstep(0.02, 0.2, e);
       h = Math.pow(h, 0.8) * (0.78 + best[2] * 0.22);
@@ -151,7 +151,7 @@ export function stoneTexture(tile: number): THREE.DataTexture {
       const e = Math.min(dx, dy);
       const sr = rr[k]!;
       let h = smoothstep(2.0, 9 + sr * 6, e);
-      const face = fbm(x / 32, y / 32, 21, 4, size / 32);
+      const face = fbm(x / 32, y / 32, 21, 3, size / 32);
       h = h * (0.72 + face * 0.35 + sr * 0.08);
       // Kissenform
       const cx = ((xx - x0) / (x1 - x0)) * 2 - 1;
@@ -265,8 +265,8 @@ export function groundMask(): THREE.DataTexture {
       const wx = (x / size - 0.5) * MASK_EXTENT;
       const wz = (y / size - 0.5) * MASK_EXTENT;
       const r = Math.hypot(wx, wz);
-      const n1 = fbm(wx * 0.22, wz * 0.22, 1, 5);
-      const n2 = fbm(wx * 0.6 + 40, wz * 0.6, 2, 4);
+      const n1 = fbm(wx * 0.22, wz * 0.22, 1, 4);
+      const n2 = fbm(wx * 0.6 + 40, wz * 0.6, 2, 3);
       // Erde: Randzone (zwischen Kampfkreis und Mauer) fast voll, innen Flecken
       let dirt = smoothstep(0.52, 0.72, n1) * 0.75;
       dirt += 0.38 * Math.exp(-Math.pow(r / 4.5, 2)) * (0.6 + n2 * 0.8);
@@ -282,7 +282,7 @@ export function groundMask(): THREE.DataTexture {
       wear += rut * 0.6;
       wear *= 0.75 + n2 * 0.5;
       // Pfuetzen
-      let pud = smoothstep(0.66, 0.8, fbm(wx * 0.35 + 9, wz * 0.35 - 3, 3, 4)) * 0.7;
+      let pud = smoothstep(0.66, 0.8, fbm(wx * 0.35 + 9, wz * 0.35 - 3, 3, 3)) * 0.7;
       for (const [px, pz, pr] of puddles) {
         const d = Math.hypot(wx - px, wz - pz) / pr;
         pud = Math.max(pud, (1 - smoothstep(0.35, 1.0, d + (n2 - 0.5) * 0.6)) * 0.95);
@@ -505,17 +505,6 @@ function drawCharge(g: CanvasRenderingContext2D, kind: number, cx: number, cy: n
   g.restore();
 }
 
-/** UV-Rechteck (u0, v0, u1, v1) einer Atlas-Zelle. v=1 ist oben. */
-export function bannerCell(i: number): [number, number, number, number] {
-  const c = i % BANNER_CELLS.cols;
-  const r = Math.floor(i / BANNER_CELLS.cols);
-  const u0 = c / BANNER_CELLS.cols;
-  const u1 = (c + 1) / BANNER_CELLS.cols;
-  const v1 = 1 - r / BANNER_CELLS.rows;
-  const v0 = 1 - (r + 1) / BANNER_CELLS.rows;
-  return [u0 + 0.002, v0 + 0.002, u1 - 0.002, v1 - 0.002];
-}
-
 // ------------------------------------------------------------------ Efeu
 
 export function ivyTexture(): THREE.CanvasTexture {
@@ -573,5 +562,3 @@ export function ivyTexture(): THREE.CanvasTexture {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-
-export const COURT_RADIUS = WALL_INNER + 0.6;
