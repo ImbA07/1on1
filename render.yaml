@@ -1,0 +1,13 @@
+# Vorlage fuer kostenloses Hosting auf Render (https://render.com).
+# Beim Einrichten: "New" -> "Blueprint" -> dieses Repository waehlen.
+services:
+  - type: web
+    name: 1on1
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

@@ -10,7 +10,7 @@ import {
   type Phase,
   type ServerMessage,
 } from '../shared/protocol.js';
-import { cloneSim, newSimState, sanitizeInput, stepPlayer, type SimState } from '../shared/sim.js';
+import { SPAWNS, newSimState, sanitizeInput, stepPlayer, type SimState } from '../shared/sim.js';
 
 export const MAX_PLAYERS = 2;
 const EMPTY_ROOM_TTL_MS = 60_000;
@@ -37,11 +37,6 @@ interface Room {
   phase: Phase;
   emptySince: number | null;
 }
-
-const SPAWNS = [
-  { x: 0, z: 6, yaw: 0 },
-  { x: 0, z: -6, yaw: Math.PI },
-];
 
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -248,6 +243,3 @@ export class RoomManager {
     throw new Error('Kein freier Raum-Code gefunden');
   }
 }
-
-// Fuer Tests
-export { cloneSim };

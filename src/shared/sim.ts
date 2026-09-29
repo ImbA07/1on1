@@ -20,6 +20,12 @@ export const STAMINA_REGEN_MOVING_FACTOR = 0.6;
 export const REGEN_DELAY = 0.9; // Pause nach dem Rennen, bevor Ausdauer zurueckkommt
 export const EXHAUST_RECOVER = 30; // ab hier darf man nach Erschoepfung wieder rennen
 
+// Startplaetze der beiden Spieler (einander zugewandt)
+export const SPAWNS = [
+  { x: 0, z: 6, yaw: 0 },
+  { x: 0, z: -6, yaw: Math.PI },
+];
+
 export interface SimState {
   x: number;
   z: number;
