@@ -90,9 +90,9 @@ export const CAPE_ROWS = 4;
 
 /** Waffenrock-Bahn: vorne (side -1) oder hinten (+1), Punkte von der Taille abwaerts. */
 function tabColumn(x: number, side: number): P3[] {
-  const ys = [1.066, 0.9, 0.71, 0.48];
+  const ys = side < 0 ? [1.066, 0.9, 0.71, 0.48] : [1.066, 0.92, 0.76, 0.58];
   const zf = [-0.146, -0.19, -0.2, -0.19];
-  const zb = [0.128, 0.172, 0.195, 0.2];
+  const zb = [0.128, 0.163, 0.178, 0.182];
   const zs = side < 0 ? zf : zb;
   const k = side < 0 ? 0.8 : -0.9;
   return ys.map((y, i) => [x * (1 + i * 0.12), y, zs[i]! + k * x * x] as const);

@@ -176,7 +176,7 @@ export class SecondarySim {
     }
     this.lastAnchor.copy(_v);
     this.time += dt;
-    this.acc = Math.min(this.acc + dt, STEP * 5);
+    this.acc = Math.min(this.acc + dt, STEP * 10);
     for (const ch of this.chains) ch.computeTargets();
     // leichter Wind (in Weltrichtung, langsam wechselnd)
     _wind.set(Math.sin(this.time * 0.37) * 0.35 + Math.sin(this.time * 1.7) * 0.15, 0, Math.cos(this.time * 0.29) * 0.3 + 0.25);

@@ -178,6 +178,14 @@ export class FighterAnimator {
     this.legR = leg('R', 1);
   }
 
+  /** Blickrichtung neu uebernehmen (kein Nachziehen der Beine), z. B. nach dem Aufstellen. */
+  resetYaw(): void {
+    this.prevYaw = null;
+    this.legOff = 0;
+    this.turnAct = 0;
+    this.yawRate = 0;
+  }
+
   update(dt: number, vx: number, vz: number, yaw: number, sprinting: boolean): void {
     if (!(dt > 0)) dt = 1 / 60;
     dt = Math.min(dt, 0.1);

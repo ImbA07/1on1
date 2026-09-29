@@ -738,7 +738,7 @@ function buildCuirass(c: Ctx): void {
       { y: 1.2, rx: 0.166, rzF: 0.167, rzB: 0.12, cz, n: 2.2 },
     ],
     {
-      segs: 14,
+      segs: 26,
       arc: [-1.3, 1.3],
       thickness: 0.005,
       deform: (p, th, i) => {
@@ -748,6 +748,13 @@ function buildCuirass(c: Ctx): void {
           p.z -= 0.004 * f;
         }
         ridge(p, th, 0.012);
+        // Kannelierung (gotische Riefen), nach unten staerker
+        const a = Math.abs(th);
+        if (a > 0.25 && a < 1.15) {
+          const k = Math.pow(Math.abs(Math.cos(((a - 0.25) / 0.9) * Math.PI * 2)), 3) * (i === 0 ? 1 : i === 1 ? 0.8 : i === 2 ? 0.45 : 0.2);
+          p.x += Math.sin(th) * 0.007 * k;
+          p.z -= Math.cos(th) * 0.007 * k;
+        }
       },
     },
   );

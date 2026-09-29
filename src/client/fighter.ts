@@ -78,6 +78,7 @@ export class Fighter {
     this.setArmorTier('heavy');
     // Erste Pose sofort setzen, damit die Figur nie in der Ruhelage aufblitzt
     this.animator.update(1 / 60, 0, 0, 0, false);
+    this.animator.resetYaw();
   }
 
   get armorTier(): ArmorTier {
