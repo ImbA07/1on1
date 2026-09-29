@@ -80,6 +80,21 @@ Das Spiel lebt vom **Lesen des Gegners**: Ausholen dauert, also sieht man Angrif
 - **Ausweichrolle / Sprung nach hinten:** Kostet viel Ausdauer, du bist dabei kurz verwundbar. Schwere Rüstung macht die Rolle kürzer und langsamer.
 - **Kein Springen** (bringt Chaos ohne Nutzen).
 
+### 4.1c Tastenbelegung (Standard)
+
+| Taste | Aktion |
+|---|---|
+| W A S D | Bewegen |
+| Shift | Rennen |
+| Leertaste | Ausweichrolle / Sprung nach hinten |
+| Linke Maustaste (halten) + Maus bewegen | Angriff (Richtung wählen, loslassen = Schlag) |
+| Rechte Maustaste (halten) + Maus bewegen | Block (Richtung wählen) |
+| Mausrad-Klick | Lock-on an / aus |
+| Q | Wurfaxt werfen |
+| Esc | Menü, dort „Aufgeben" mit Bestätigung |
+
+Die Belegung ist zunächst fest. Anpassbar machen kann man sie später.
+
 ### 4.2 Geschwindigkeit
 
 Alles läuft über Zeit. Die Dauer für Ausholen, Schlag und Erholung ergibt sich so:
@@ -103,7 +118,13 @@ Ist die Ausdauer leer, ist man **erschöpft**: Schläge werden langsamer, Blocks
 
 ### 4.4 Trefferzonen
 
-Beim Treffer zählt, **wohin** er geht. Die Zone hängt von Richtung und Abstand ab (z. B. „oben" trifft eher Kopf/Schulter, „links/rechts" eher Torso/Arme, Beintreffer über Spezialangriffe oder Speer).
+Beim Treffer zählt, **wohin** er geht. Die Zone wird durch die **Schlagrichtung** bestimmt (einfach und gut lesbar):
+
+- **Von oben** → Kopf.
+- **Von links/rechts** → Torso. Wenn der Gegner gerade ausholt (Arm ist ausgestreckt), trifft der Schlag stattdessen den **Arm**.
+- **Beine** → nur durch bestimmte Waffen (Speer-Stich tief, Streitaxt-Hieb tief) oder wenn der Gegner gerade in der Ausweichrolle oder in der Erholung ist.
+
+Diese Regeln sind Startwerte und werden in Testkämpfen angepasst.
 
 | Zone | Schaden | Zusatzeffekt |
 |---|---|---|
@@ -221,13 +242,13 @@ Rein kosmetisch, ohne Einfluss auf den Kampf:
 
 Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 
-- **3D im Browser:** Three.js (läuft in jedem modernen Browser).
-- **Online-Verbindung:** Ein kleiner Server (Node.js mit WebSockets) verwaltet die Räume und entscheidet über Treffer (damit niemand schummeln kann). Alternativ direkte Verbindung zwischen den Spielern (WebRTC), was billiger, aber anfälliger für Verzögerungen und Schummeln ist.
+- **3D im Browser:** Three.js (läuft in jedem modernen Browser). Entschieden.
+- **Online-Verbindung:** Ein kleiner Server (Node.js mit WebSockets) verwaltet die Räume und entscheidet über Treffer (damit niemand schummeln kann). Entschieden.
 - **Raum-Links:** Kurzer Code in der Adresse, keine Datenbank nötig, Räume leben nur im Speicher.
 - **Server entscheidet:** Der Server bestimmt Treffer und Blocks (kein Schummeln). Eine kleine Verzögerung wird bewusst akzeptiert.
 - **Kein Chat:** Kommunikation läuft extern (Discord, Handy). Spart Aufwand.
 - **Wichtig für langsamen Kampf:** Weil alles absichtlich langsam ist (Ausholen dauert ~0,5 bis 1,5 Sekunden), ist eine kleine Verzögerung (Ping) verkraftbar. Das ist ein großer Vorteil gegenüber schnellen Actionspielen.
-- **Hosting:** Ein günstiger Dienst reicht für Freunde (kostenlose oder sehr günstige Stufen).
+- **Hosting: kostenlos.** Ein kostenloser Dienst (z. B. Render oder ähnlich, Angebote ändern sich, wird bei der Umsetzung geprüft) reicht für zwei Spieler. **Bekannte Einschränkung:** Kostenlose Server „schlafen" nach einiger Zeit ohne Besucher. Der erste Aufruf des Links kann dann **30 bis 60 Sekunden** dauern. Tipp: Den Link einmal kurz vorher öffnen, bevor die Freunde kommen. Falls das nervt, kann man später auf einen günstigen Server umsteigen.
 - **Assets:** Low-Poly-Modelle und Animationen, entweder selbst gebaut oder freie Pakete.
 
 ---
@@ -259,9 +280,10 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 ## 12. Offene Punkte (noch zu klären)
 
 - **Name des Spiels:** Bleibt vorerst „1on1", später entscheiden.
-- **Genaue Trefferzonen-Logik:** Wie genau bestimmt die Richtung die Zone? Muss im Test ausprobiert werden.
-- **Tastenbelegung** für Wurfaxt, Rennen, Ausweichrolle, Aufgeben.
-- **Hosting/Kosten:** Wo soll der Server laufen, wer bezahlt?
+- **Feinabstimmung im Test:** Trefferzonen-Regeln, Waffenwerte, Ausdauerkosten und Rüstungsfaktoren sind Startwerte und werden mit echten Testkämpfen angepasst.
+- **Kostenloser Server:** Prüfen, welcher Dienst bei der Umsetzung gerade kostenlos ist, und ob die Aufwachzeit stört.
+
+Bereits entschieden (jetzt): Trefferzone nach Schlagrichtung, Standard-Tastenbelegung (fest), Three.js + Node.js, kostenloses Hosting.
 
 Bereits entschieden (frühere Runden): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
 
