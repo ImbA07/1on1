@@ -20,6 +20,8 @@ Langsam, überlegt und hart: Jede Waffe und jede Rüstung verändert, wie schnel
 | Ausrüstung | Waffe und Rüstung geheim wählen, dann Enthüllung. Frei wählbar, kein Punkte-Budget |
 | Kamera | Über der Schulter, freie Kamera, Lock-on auf den Gegner per Mausrad-Klick |
 | Gewalt | Realistisch: viel Blut, sichtbar beschädigte Rüstung (kein Abtrennen von Gliedmaßen) |
+| Anzeigen | **Kein Lebensbalken.** Nur Ausdauerbalken und Richtungsanzeige. Zustand erkennt man am Körper und an Bildschirm-Effekten |
+| Stil | Low-Poly, düster mit bunten Akzenten, mittelalterliche Menüs |
 
 **Grundidee in einem Satz:** Wer schwere Rüstung trägt, hält mehr aus, ist aber langsamer, und wer langsam ist, muss den Gegner lesen statt ihn zu überrumpeln.
 
@@ -209,7 +211,35 @@ Es gibt eine **Arenagrenze**: Zurückweichen ist möglich, aber nicht endlos. We
 
 ---
 
-## 8. Optik, Gewalt und Sound
+## 8. Design, Gewalt und Sound
+
+### Grafikstil
+- **Low-Poly, eine Mischung aus düster und bunt:** Die Welt ist matt und erdig (Stein, Holz, Nebel), dazu kommen **bunte, leuchtende Akzente**: Wappen, Banner, Umhänge, Blut. Die Arenen unterscheiden sich im Ton: manche düster (Nacht, Nebel), manche farbig (goldener Abend). Manchmal wirkt die Umgebung hell und leuchtend, während die Kämpfer selbst dunkel und ernst aussehen. Diese drei Richtungen werden kombiniert und pro Arena gewichtet.
+- **Waffen und Rüstungen:** Mittlerer Detailgrad, Ornamente wie Gravuren und Nieten. **Die Silhouette muss trotzdem sofort erkennbar sein** (Speer, Zweihänder, Rapier usw.), damit man im Kampf sieht, was der Gegner trägt.
+- **Charaktere:** Ein gleicher Körper für alle. Unterschied entsteht durch Rüstung, Farben, Wappen und Umhang.
+- **Stimmung und Tageszeit der Arenen:** Bewölkter Tag (matt), goldene Abendsonne, Nacht mit Fackeln, Regen und Nebel. Die Effekte werden schlank gehalten, damit das Spiel im Browser flüssig läuft und man den Gegner immer gut erkennt.
+
+### Benutzeroberfläche (Menüs, Lobby)
+Mittelalterlicher Look: Pergament, Holzrahmen, Eisenbeschläge, passende Schrift. Klar lesbar, nicht überladen.
+
+### Anzeigen im Kampf (kein Lebensbalken)
+Bewusst **kein Lebensbalken**, weder für dich noch für den Gegner. Das macht den Kampf spannender und unsicherer: Man muss den Gegner lesen.
+
+- **Sichtbar:** Ausdauerbalken und eine **Richtungsanzeige** für Angriff und Block (oben, links, rechts), die beim Lernen hilft.
+- **Nicht sichtbar:** Lebenspunkte (gibt es intern weiter, werden nur nicht als Zahl oder Balken gezeigt), keine Körper-Silhouette dauerhaft.
+
+**Eigener Zustand ohne Balken:**
+- **Bildschirm-Effekte:** Roter Rand, Herzschlag und schwerer Atem, leicht verschwommene Sicht bei schwacher Gesundheit.
+- **Körper reagiert spürbar:** Verletzter Arm = Waffe hebt sich langsamer oder zittert, verletztes Bein = du humpelst.
+- **Kurzes Aufblitzen nach Treffer:** Eine kleine Körper-Silhouette zeigt 1 bis 2 Sekunden, welche Zone getroffen wurde, dann verschwindet sie.
+
+**Zustand des Gegners:** Nur sichtbare Zeichen: Blut, Humpeln, beschädigte Rüstung, Atmung. Der Ergebnis-Bildschirm nach dem Kampf zeigt dann die Statistik (Schaden, getroffene Zonen).
+
+### Effekte bei Treffern
+Wuchtig und spürbar: kurzer Freeze-Frame, leichtes Kamerawackeln, Funken bei Metall, Blutspritzer. Treffer sollen sich schwer und wichtig anfühlen. Der „Todesstoß" darf etwas filmischer sein, aber nicht den Rhythmus zerstören.
+
+### Enthüllung vor der Runde
+Kurze Kamerafahrt: Beide Kämpfer werden nacheinander gezeigt, mit Namen von Waffe und Rüstung, dann Countdown.
 
 ### Gewalt-Darstellung (realistisch)
 - **Viel Blut:** Spritzer bei Treffern, Flecken auf Kleidung und Rüstung, Blut auf dem Boden. Bleibt bis Rundenende sichtbar.
@@ -281,9 +311,13 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 
 - **Name des Spiels:** Bleibt vorerst „1on1", später entscheiden.
 - **Feinabstimmung im Test:** Trefferzonen-Regeln, Waffenwerte, Ausdauerkosten und Rüstungsfaktoren sind Startwerte und werden mit echten Testkämpfen angepasst.
+- **Ohne Lebensbalken:** Das ist eine mutige Entscheidung. Risiko: Man weiß nicht, wie knapp es ist, und kann sich unfair getroffen fühlen. Das prüfen wir im Test. Idee für später: Lobby-Schalter „Lebensbalken an/aus".
+- **Stimmung pro Arena:** Vorschlag: Burghof = bewölkter Tag, Wald = goldener Abend, Steinbrücke = Nebel/Regen, dazu eine Nacht-Variante mit Fackeln. Endgültig festlegen, wenn die Arenen gebaut werden.
 - **Kostenloser Server:** Prüfen, welcher Dienst bei der Umsetzung gerade kostenlos ist, und ob die Aufwachzeit stört.
 
-Bereits entschieden (jetzt): Trefferzone nach Schlagrichtung, Standard-Tastenbelegung (fest), Three.js + Node.js, kostenloses Hosting.
+Bereits entschieden (Design): Düster mit bunten Akzenten, mittlerer Waffen-Detailgrad mit klarer Silhouette, ein Körper für alle, mittelalterliche Menüs, kein Lebensbalken (nur Ausdauer und Richtungsanzeige), Zustand über Bildschirm-Effekte, Körperreaktion und kurzes Treffer-Aufblitzen, wuchtige Effekte, Kamerafahrt bei der Enthüllung.
+
+Bereits entschieden (davor): Trefferzone nach Schlagrichtung, Standard-Tastenbelegung (fest), Three.js + Node.js, kostenloses Hosting.
 
 Bereits entschieden (frühere Runden): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
 
