@@ -17,7 +17,9 @@ Langsam, überlegt und hart: Jede Waffe und jede Rüstung verändert, wie schnel
 | Schaden | Trefferzonen (Kopf, Torso, Arme, Beine) |
 | Dauer | ca. 3 bis 5 Minuten pro Kampf |
 | Beitritt | Raum-Link, kein Account nötig |
-| Ausrüstung | Waffe und Rüstung geheim wählen, dann Enthüllung |
+| Ausrüstung | Waffe und Rüstung geheim wählen, dann Enthüllung. Frei wählbar, kein Punkte-Budget |
+| Kamera | Über der Schulter, freie Kamera, Lock-on auf den Gegner per Mausrad-Klick |
+| Gewalt | Realistisch: viel Blut, sichtbar beschädigte Rüstung (kein Abtrennen von Gliedmaßen) |
 
 **Grundidee in einem Satz:** Wer schwere Rüstung trägt, hält mehr aus, ist aber langsamer, und wer langsam ist, muss den Gegner lesen statt ihn zu überrumpeln.
 
@@ -31,8 +33,8 @@ Langsam, überlegt und hart: Jede Waffe und jede Rüstung verändert, wie schnel
 4. **Ausrüstung wählen (geheim):** Beide wählen Waffe, Rüstung und optional die Wurfaxt. Der andere sieht nur „bereit", nicht was gewählt wurde.
 5. **Enthüllung:** Die Wahl wird gleichzeitig gezeigt, kurzer Countdown.
 6. **Kampf:** Runde beginnt in der gewählten Arena.
-7. **Rundenende:** Wer keine Lebenspunkte mehr hat oder aufgibt, verliert die Runde.
-8. **Sieg:** Wer zuerst die eingestellte Zahl an Runden gewonnen hat, gewinnt. Danach Revanche mit einem Klick.
+7. **Rundenende:** Wer keine Lebenspunkte mehr hat, bekommt noch die „Letzte Chance" (siehe 4.7). Danach ist die Runde entschieden.
+8. **Sieg:** Wer zuerst die eingestellte Zahl an Runden gewonnen hat, gewinnt. Danach gibt es einen **Ergebnis-Bildschirm mit Statistik** (Sieger, Runden, getroffene Zonen, verursachter Schaden) und einen Revanche-Knopf.
 
 Verlässt jemand den Raum mitten im Kampf, ist die Runde für den anderen gewonnen. Bei kurzem Verbindungsabbruch (bis ca. 15 Sekunden) wird der Kampf pausiert.
 
@@ -59,10 +61,24 @@ Es gibt **drei Richtungen**: **oben**, **links**, **rechts**.
 - **Angriff:** Linke Maustaste gedrückt halten (Ausholen), dabei die Maus in eine Richtung bewegen, loslassen = Schlag aus dieser Richtung.
 - **Block:** Rechte Maustaste halten, Maus zeigt die Richtung, aus der du den Schlag erwartest. Nur die **richtige Richtung** blockt.
 - **Angriffsphasen:** Ausholen → Schlag → Erholung. Beim Ausholen kann man die Richtung noch wechseln (kostet Zeit und Ausdauer) oder abbrechen (Finte).
+- **Finten (begrenzt):** Eine Finte ist erlaubt, kostet aber Ausdauer und macht dich kurz langsam. Bluffen lohnt sich ab und zu, aber nicht ständig.
 - **Konter:** Wer im letzten Moment vor dem Treffer blockt (Perfect Block), wirft den Gegner kurz aus dem Rhythmus und kann direkt kontern.
 - **Falscher Block:** Falsche Richtung = der Treffer geht durch, und der Block hat trotzdem Ausdauer gekostet.
 
 Das Spiel lebt vom **Lesen des Gegners**: Ausholen dauert, also sieht man Angriffe kommen. Wer zu vorhersehbar ist, wird geblockt und gekontert.
+
+### 4.1a Kamera und Lock-on
+
+- **Kamera:** Über der Schulter (hinter der Figur), frei drehbar mit der Maus.
+- **Lock-on:** Klick auf das **Mausrad** richtet die Kamera auf den Gegner und hält sie dort. Nochmal klicken löst den Lock-on wieder.
+- Ohne Lock-on steuerst du Kamera und Figur komplett selbst.
+
+### 4.1b Bewegung
+
+- **Gehen und Rennen:** Rennen kostet Ausdauer.
+- **Seitschritt / Umkreisen:** Im Lock-on läufst du seitlich um den Gegner. Wichtig für Positionskampf.
+- **Ausweichrolle / Sprung nach hinten:** Kostet viel Ausdauer, du bist dabei kurz verwundbar. Schwere Rüstung macht die Rolle kürzer und langsamer.
+- **Kein Springen** (bringt Chaos ohne Nutzen).
 
 ### 4.2 Geschwindigkeit
 
@@ -110,11 +126,15 @@ Optional wählbar **eine Wurfaxt pro Kampf** (statt eines kleinen Vorteils, z. B
 
 Beide Spieler starten an gegenüberliegenden Seiten. Man umkreist sich, testet mit einem Schlag, sieht den Block, wartet, lässt den Gegner Ausdauer verbrauchen, und schlägt dann zu, wenn er müde ist. Eine gute Runde dauert etwa 60 bis 90 Sekunden.
 
+### 4.7 Letzte Chance (Todesstoß-Moment)
+
+Sinkt ein Spieler auf 0 Lebenspunkte, geht er in die Knie. Er hat **ca. 3 Sekunden**, um einen letzten Angriff oder Block zu schaffen (mit stark eingeschränkter Ausdauer). Der Sieger muss den Todesstoß setzen. Gelingt dem Verlierer ein Treffer oder Perfect Block, kann er mit einem kleinen Rest an Lebenspunkten weiterkämpfen. Sonst ist die Runde vorbei, mit kurzer Zeitlupe.
+
 ---
 
 ## 5. Waffen (Startwerte, werden später getestet und angepasst)
 
-Sechs Waffen plus die Wurfaxt. Werte sind grob (1 = niedrig, 5 = hoch).
+Sechs Waffen plus die Wurfaxt. Werte sind grob (1 = niedrig, 5 = hoch). Alle Waffen und Rüstungen sind frei wählbar (kein Punkte-Budget), die Balance kommt aus den Werten selbst.
 
 | Waffe | Tempo | Reichweite | Schaden | Ausdauer-Kosten | Besonderheit |
 |---|---|---|---|---|---|
@@ -123,12 +143,12 @@ Sechs Waffen plus die Wurfaxt. Werte sind grob (1 = niedrig, 5 = hoch).
 | **Zweihänder** | 2 | 4 | 5 | 5 | Sehr starke Treffer, langsam, Block ist schwächer |
 | **Streitaxt** | 3 | 3 | 4 | 4 | Durchbricht Blocks teilweise, kostet viel Ausdauer |
 | **Streitkolben** | 2 | 2 | 4 | 4 | Ignoriert einen Teil der Rüstung, gut gegen Schwere |
-| **Dolch (oder Rapier)** | 5 | 1 | 2 | 1 | Sehr schnell, kurze Reichweite, Stiche in Lücken |
+| **Rapier** | 5 | 2 | 2 | 1 | Sehr schnell, Stiche in Lücken der Rüstung, schwach gegen schwere Rüstung |
 
 **Wurfaxt:** einmalig, siehe 4.5.
 
 **Gegenspiel (Stein-Schere-Papier-Gefühl, aber nicht starr):**
-- Speer hält Nahkämpfer auf Abstand, wird vom Dolch aber unterlaufen.
+- Speer hält Nahkämpfer auf Abstand, wird vom Rapier aber unterlaufen.
 - Streitkolben ist gut gegen schwere Rüstung, aber zu langsam für flinke Gegner.
 - Schwert + Schild ist stabil, hat aber wenig Druck.
 
@@ -162,7 +182,13 @@ Es gibt eine **Arenagrenze**: Zurückweichen ist möglich, aber nicht endlos. We
 
 ---
 
-## 8. Optik und Sound
+## 8. Optik, Gewalt und Sound
+
+### Gewalt-Darstellung (realistisch)
+- **Viel Blut:** Spritzer bei Treffern, Flecken auf Kleidung und Rüstung, Blut auf dem Boden. Bleibt bis Rundenende sichtbar.
+- **Sichtbarer Rüstungsschaden:** Dellen, Kratzer und abgebrochene Teile bei schweren Treffern.
+- **Kein Abtrennen von Gliedmaßen** (bewusst weggelassen, wegen möglicher Probleme bei Plattformen und im Freundeskreis).
+- Später optional: Schalter in den Einstellungen, um Blut zu reduzieren oder auszuschalten.
 
 ### Optik anpassen
 Rein kosmetisch, ohne Einfluss auf den Kampf:
@@ -222,10 +248,12 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 
 ## 12. Offene Punkte (noch zu klären)
 
-- **Name des Spiels** (aktuell nur Arbeitstitel „1on1").
+- **Name des Spiels:** Bleibt vorerst „1on1", später entscheiden.
 - **Genaue Trefferzonen-Logik:** Wie genau bestimmt die Richtung die Zone? Muss im Test ausprobiert werden.
-- **Dolch oder Rapier?** Beide Richtungen sind möglich, es fühlt sich unterschiedlich an.
-- **Finten:** Wie stark sollen sie sein? Zu stark macht das Spiel zum Bluff-Wettbewerb.
-- **Kamera:** Über der Schulter (wie Mordhau/Chivalry) oder weiter weg? Beeinflusst, wie gut man Angriffe lesen kann.
-- **Tastenbelegung für Wurfaxt, Rennen, Aufgeben.**
+- **Tastenbelegung** für Wurfaxt, Rennen, Ausweichrolle, Aufgeben.
+- **Aufgeben-Knopf:** Soll man jederzeit aufgeben können?
 - **Hosting/Kosten:** Wo soll der Server laufen, wer bezahlt?
+- **Übungsmodus:** Soll man alleine gegen eine Puppe üben können?
+- **Sprach-/Text-Chat** zwischen den Spielern oder nur extern (Discord, Handy)?
+
+Bereits entschieden (in dieser Runde): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
