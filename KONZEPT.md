@@ -1,0 +1,231 @@
+# 1on1 – Konzept (Arbeitstitel)
+
+Ein taktisches Mittelalter-Duell im Browser. Link teilen, Freund klickt drauf, 1 gegen 1.
+Langsam, überlegt und hart: Jede Waffe und jede Rüstung verändert, wie schnell und wie verwundbar du bist.
+
+---
+
+## 1. Eckdaten
+
+| Punkt | Entscheidung |
+|---|---|
+| Spielmodus | 1 gegen 1, Online |
+| Plattform | PC / Laptop im Browser (keine Installation) |
+| Grafik | 3D, Low-Poly-Stil |
+| Kampf | Echtzeit, aber bewusst langsam (Ausdauer, Wucht, Timing) |
+| Steuerung | Maus: Richtungs-Angriffe und Richtungs-Blocks |
+| Schaden | Trefferzonen (Kopf, Torso, Arme, Beine) |
+| Dauer | ca. 3 bis 5 Minuten pro Kampf |
+| Beitritt | Raum-Link, kein Account nötig |
+| Ausrüstung | Waffe und Rüstung geheim wählen, dann Enthüllung |
+
+**Grundidee in einem Satz:** Wer schwere Rüstung trägt, hält mehr aus, ist aber langsamer, und wer langsam ist, muss den Gegner lesen statt ihn zu überrumpeln.
+
+---
+
+## 2. Spielablauf
+
+1. **Raum erstellen:** Spieler A drückt auf „Spiel erstellen", gibt sich einen Namen und stellt die Regeln ein.
+2. **Link teilen:** Das Spiel gibt einen Link (z. B. `…/raum/AB12`). Den schickt A an den Freund.
+3. **Beitreten:** Spieler B öffnet den Link, gibt seinen Namen ein und ist im Raum.
+4. **Ausrüstung wählen (geheim):** Beide wählen Waffe, Rüstung und optional die Wurfaxt. Der andere sieht nur „bereit", nicht was gewählt wurde.
+5. **Enthüllung:** Die Wahl wird gleichzeitig gezeigt, kurzer Countdown.
+6. **Kampf:** Runde beginnt in der gewählten Arena.
+7. **Rundenende:** Wer keine Lebenspunkte mehr hat oder aufgibt, verliert die Runde.
+8. **Sieg:** Wer zuerst die eingestellte Zahl an Runden gewonnen hat, gewinnt. Danach Revanche mit einem Klick.
+
+Verlässt jemand den Raum mitten im Kampf, ist die Runde für den anderen gewonnen. Bei kurzem Verbindungsabbruch (bis ca. 15 Sekunden) wird der Kampf pausiert.
+
+---
+
+## 3. Lobby-Einstellungen (vom Ersteller wählbar)
+
+- **Anzahl Runden:** 1, 3 (Best of 3) oder 5 (Best of 5). Standard: 3.
+- **Arena:** eine der Arenen oder „Zufall".
+- **Gleiche Ausrüstung erzwingen:** An = beide müssen dieselbe Waffe und Rüstung nehmen (reiner Können-Vergleich). Aus = freie Wahl.
+- **Schaden-Regeln:**
+  - *Realistisch:* wenig Lebenspunkte, Treffer tun richtig weh, Kämpfe sind kürzer.
+  - *Standard:* ausgewogen.
+  - *Arcade:* viele Lebenspunkte, längere Kämpfe.
+
+---
+
+## 4. Kampfsystem
+
+### 4.1 Angreifen und Blocken (Richtungssystem)
+
+Es gibt **drei Richtungen**: **oben**, **links**, **rechts**.
+
+- **Angriff:** Linke Maustaste gedrückt halten (Ausholen), dabei die Maus in eine Richtung bewegen, loslassen = Schlag aus dieser Richtung.
+- **Block:** Rechte Maustaste halten, Maus zeigt die Richtung, aus der du den Schlag erwartest. Nur die **richtige Richtung** blockt.
+- **Angriffsphasen:** Ausholen → Schlag → Erholung. Beim Ausholen kann man die Richtung noch wechseln (kostet Zeit und Ausdauer) oder abbrechen (Finte).
+- **Konter:** Wer im letzten Moment vor dem Treffer blockt (Perfect Block), wirft den Gegner kurz aus dem Rhythmus und kann direkt kontern.
+- **Falscher Block:** Falsche Richtung = der Treffer geht durch, und der Block hat trotzdem Ausdauer gekostet.
+
+Das Spiel lebt vom **Lesen des Gegners**: Ausholen dauert, also sieht man Angriffe kommen. Wer zu vorhersehbar ist, wird geblockt und gekontert.
+
+### 4.2 Geschwindigkeit
+
+Alles läuft über Zeit. Die Dauer für Ausholen, Schlag und Erholung ergibt sich so:
+
+> **Dauer = Waffen-Grundtempo × Rüstungs-Faktor**
+
+Schwere Waffen und schwere Rüstung machen also **doppelt** langsam. Das gilt auch für Laufgeschwindigkeit und Ausdauer-Erholung.
+
+### 4.3 Ausdauer (zentral)
+
+Ausdauer ist die wichtigste Ressource neben den Lebenspunkten.
+
+| Aktion | Kostet Ausdauer |
+|---|---|
+| Schlagen | ja (schwere Waffe = mehr) |
+| Blocken | ja, beim Auffangen eines Treffers (schwerer Treffer = mehr) |
+| Rennen | ja, langsam |
+| Gehen, Stehen | nein, Erholung |
+
+Ist die Ausdauer leer, ist man **erschöpft**: Schläge werden langsamer, Blocks halten weniger. Schwere Rüstung verbraucht mehr Ausdauer und erholt langsamer. Das zwingt zu Pausen und Positionskämpfen.
+
+### 4.4 Trefferzonen
+
+Beim Treffer zählt, **wohin** er geht. Die Zone hängt von Richtung und Abstand ab (z. B. „oben" trifft eher Kopf/Schulter, „links/rechts" eher Torso/Arme, Beintreffer über Spezialangriffe oder Speer).
+
+| Zone | Schaden | Zusatzeffekt |
+|---|---|---|
+| Kopf | hoch (×1,5) | kurze Benommenheit |
+| Torso | normal (×1,0) | – |
+| Arme | niedrig (×0,7) | Waffenarm getroffen = langsameres Ausholen für kurze Zeit |
+| Beine | niedrig (×0,7) | Bein getroffen = Laufen langsamer für kurze Zeit |
+
+Die Rüstung schützt **pro Zone** (siehe 6.). Wer schwer gepanzert ist, verliert kaum Lebenspunkte, ist aber ein langsames Ziel.
+
+### 4.5 Wurfaxt (einmalig)
+
+Optional wählbar **eine Wurfaxt pro Kampf** (statt eines kleinen Vorteils, z. B. etwas weniger Ausdauer am Start).
+
+- Wird mit einer eigenen Taste geworfen, hat eine sichtbare Flugbahn und lässt sich blocken oder ausweichen.
+- Trifft sie, macht sie soliden Schaden und bringt den Gegner kurz aus dem Rhythmus.
+- Verfehlt sie, liegt sie in der Arena und kann aufgehoben werden (Wagnis!). Pro Kampf ist sie nur einmal werfbar.
+
+### 4.6 Ablauf einer Runde (Beispiel)
+
+Beide Spieler starten an gegenüberliegenden Seiten. Man umkreist sich, testet mit einem Schlag, sieht den Block, wartet, lässt den Gegner Ausdauer verbrauchen, und schlägt dann zu, wenn er müde ist. Eine gute Runde dauert etwa 60 bis 90 Sekunden.
+
+---
+
+## 5. Waffen (Startwerte, werden später getestet und angepasst)
+
+Sechs Waffen plus die Wurfaxt. Werte sind grob (1 = niedrig, 5 = hoch).
+
+| Waffe | Tempo | Reichweite | Schaden | Ausdauer-Kosten | Besonderheit |
+|---|---|---|---|---|---|
+| **Schwert + Schild** | 4 | 3 | 3 | 2 | Bester Block, sicherer Allrounder |
+| **Speer** | 3 | 5 | 3 | 3 | Hält auf Distanz, gut gegen Beine, schwach im Nahkampf |
+| **Zweihänder** | 2 | 4 | 5 | 5 | Sehr starke Treffer, langsam, Block ist schwächer |
+| **Streitaxt** | 3 | 3 | 4 | 4 | Durchbricht Blocks teilweise, kostet viel Ausdauer |
+| **Streitkolben** | 2 | 2 | 4 | 4 | Ignoriert einen Teil der Rüstung, gut gegen Schwere |
+| **Dolch (oder Rapier)** | 5 | 1 | 2 | 1 | Sehr schnell, kurze Reichweite, Stiche in Lücken |
+
+**Wurfaxt:** einmalig, siehe 4.5.
+
+**Gegenspiel (Stein-Schere-Papier-Gefühl, aber nicht starr):**
+- Speer hält Nahkämpfer auf Abstand, wird vom Dolch aber unterlaufen.
+- Streitkolben ist gut gegen schwere Rüstung, aber zu langsam für flinke Gegner.
+- Schwert + Schild ist stabil, hat aber wenig Druck.
+
+---
+
+## 6. Rüstung (drei Stufen)
+
+| Stufe | Schutz | Bewegung & Tempo | Ausdauer | Idee |
+|---|---|---|---|---|
+| **Leicht** (Stoff/Leder) | niedrig | schnell (×0,8 Dauer) | erholt schnell | Ausweichen, Tempo, Risiko |
+| **Mittel** (Kettenhemd) | mittel | normal (×1,0) | normal | Ausgewogen |
+| **Schwer** (Plattenrüstung) | hoch | langsam (×1,3 Dauer) | erholt langsam, hoher Verbrauch | Panzer, Geduld, wenig Fehler erlaubt |
+
+Der Schutz gilt **pro Trefferzone**: Kopf, Torso, Arme, Beine. Schwere Rüstung schützt am besten, aber auch der Kopf ist dort ein Ziel für Streitkolben.
+
+Der Rüstungs-Faktor beeinflusst auch **Laufgeschwindigkeit**, **Ausholtempo** und **Ausdauer-Erholung**.
+
+---
+
+## 7. Arenen
+
+Im Low-Poly-Stil, jede mit anderer Wirkung auf die Taktik:
+
+- **Burghof:** Offen, ausgewogen. Einstiegsarena.
+- **Wald-Lichtung:** Bäume als Hindernisse, schränken lange Waffen ein.
+- **Steinbrücke:** Schmal, wenig Platz zum Ausweichen, Speer stark.
+
+Später denkbar: Turnierplatz mit Zuschauern, Ruine, Schneelandschaft (rutschig).
+
+Es gibt eine **Arenagrenze**: Zurückweichen ist möglich, aber nicht endlos. Wer sich in die Ecke drängen lässt, hat verloren.
+
+---
+
+## 8. Optik und Sound
+
+### Optik anpassen
+Rein kosmetisch, ohne Einfluss auf den Kampf:
+- Farbe der Kleidung, Wappen/Symbol auf Schild oder Brust, Helmform, Umhangfarbe.
+- Auswahl wird lokal gespeichert (im Browser) und beim Beitritt an den Gegner geschickt.
+
+### Sound & Musik
+- Klirren, Blocks, Treffer, Rüstungsklappern (schwer klingt schwer).
+- Ruhige, düstere mittelalterliche Musik, im Kampf etwas intensiver.
+- Lautstärke einstellbar, Musik abschaltbar.
+
+---
+
+## 9. Zuschauer-Link
+
+- Der Raum hat zusätzlich einen **Zuschauer-Link**.
+- Zuschauer sehen den Kampf live (freie Kamera oder feste Perspektive), können aber nicht eingreifen.
+- Sie sehen die Ausrüstung erst **nach der Enthüllung**, nicht vorher (keine Geheimnisverrat-Gefahr).
+- Optional später: einfacher Emote-Chat („👏", „🔥") für Zuschauer.
+
+---
+
+## 10. Technischer Vorschlag (zur Diskussion)
+
+Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
+
+- **3D im Browser:** Three.js (läuft in jedem modernen Browser).
+- **Online-Verbindung:** Ein kleiner Server (Node.js mit WebSockets) verwaltet die Räume und entscheidet über Treffer (damit niemand schummeln kann). Alternativ direkte Verbindung zwischen den Spielern (WebRTC), was billiger, aber anfälliger für Verzögerungen und Schummeln ist.
+- **Raum-Links:** Kurzer Code in der Adresse, keine Datenbank nötig, Räume leben nur im Speicher.
+- **Wichtig für langsamen Kampf:** Weil alles absichtlich langsam ist (Ausholen dauert ~0,5 bis 1,5 Sekunden), ist eine kleine Verzögerung (Ping) verkraftbar. Das ist ein großer Vorteil gegenüber schnellen Actionspielen.
+- **Hosting:** Ein günstiger Dienst reicht für Freunde (kostenlose oder sehr günstige Stufen).
+- **Assets:** Low-Poly-Modelle und Animationen, entweder selbst gebaut oder freie Pakete.
+
+---
+
+## 11. Umsetzung in Stufen
+
+**Stufe 1 – Spielbarer Kern (MVP)**
+- Raum-Link, Lobby, Namenseingabe
+- Eine Arena (Burghof), zwei Waffen (Schwert + Schild, Zweihänder), zwei Rüstungsstufen
+- Richtungs-Angriff, Block, Ausdauer, Trefferzonen, Lebenspunkte
+- Runden (1/3/5)
+
+**Stufe 2 – Vollständiger Inhalt**
+- Alle 6 Waffen, alle 3 Rüstungsstufen, Wurfaxt
+- Geheime Wahl mit Enthüllung
+- Alle Lobby-Einstellungen (Arena, gleiche Ausrüstung, Schaden-Regeln)
+- Drei Arenen
+
+**Stufe 3 – Feinschliff**
+- Sound und Musik
+- Optik anpassen
+- Zuschauer-Link
+- Balancing nach echten Testkämpfen mit Freunden
+
+---
+
+## 12. Offene Punkte (noch zu klären)
+
+- **Name des Spiels** (aktuell nur Arbeitstitel „1on1").
+- **Genaue Trefferzonen-Logik:** Wie genau bestimmt die Richtung die Zone? Muss im Test ausprobiert werden.
+- **Dolch oder Rapier?** Beide Richtungen sind möglich, es fühlt sich unterschiedlich an.
+- **Finten:** Wie stark sollen sie sein? Zu stark macht das Spiel zum Bluff-Wettbewerb.
+- **Kamera:** Über der Schulter (wie Mordhau/Chivalry) oder weiter weg? Beeinflusst, wie gut man Angriffe lesen kann.
+- **Tastenbelegung für Wurfaxt, Rennen, Aufgeben.**
+- **Hosting/Kosten:** Wo soll der Server laufen, wer bezahlt?
