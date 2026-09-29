@@ -195,6 +195,8 @@ Der Schutz gilt **pro Trefferzone**: Kopf, Torso, Arme, Beine. Schwere Rüstung 
 
 Der Rüstungs-Faktor beeinflusst auch **Laufgeschwindigkeit**, **Ausholtempo** und **Ausdauer-Erholung**.
 
+**Lauftempo (Ergebnis des ersten Tests):** Das aktuelle Gehtempo (ca. 2,4 m/s) fühlt sich gut an und gilt als **Tempo für schwere Rüstung**. Es war für den Tester „minimal zu langsam", deshalb sollen mittlere und leichte Rüstung spürbar schneller sein. Startwerte: schwer 2,4 m/s, mittel ca. 2,7 m/s, leicht ca. 3,0 m/s (Rennen entsprechend schneller). Eingebaut wird das mit den Rüstungsstufen in Stufe 2.
+
 ---
 
 ## 7. Arenen
