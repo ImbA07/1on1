@@ -30,7 +30,7 @@ Langsam, überlegt und hart: Jede Waffe und jede Rüstung verändert, wie schnel
 1. **Raum erstellen:** Spieler A drückt auf „Spiel erstellen", gibt sich einen Namen und stellt die Regeln ein.
 2. **Link teilen:** Das Spiel gibt einen Link (z. B. `…/raum/AB12`). Den schickt A an den Freund.
 3. **Beitreten:** Spieler B öffnet den Link, gibt seinen Namen ein und ist im Raum.
-4. **Ausrüstung wählen (geheim):** Beide wählen Waffe, Rüstung und optional die Wurfaxt. Der andere sieht nur „bereit", nicht was gewählt wurde.
+4. **Ausrüstung wählen (geheim):** Beide wählen Waffe, Rüstung und optional die Wurfaxt. Der andere sieht nur „bereit", nicht was gewählt wurde. **Das passiert vor jeder Runde neu**, man kann sich also nach einer Niederlage anpassen.
 5. **Enthüllung:** Die Wahl wird gleichzeitig gezeigt, kurzer Countdown.
 6. **Kampf:** Runde beginnt in der gewählten Arena.
 7. **Rundenende:** Wer keine Lebenspunkte mehr hat, bekommt noch die „Letzte Chance" (siehe 4.7). Danach ist die Runde entschieden.
@@ -43,7 +43,7 @@ Verlässt jemand den Raum mitten im Kampf, ist die Runde für den anderen gewonn
 ## 3. Lobby-Einstellungen (vom Ersteller wählbar)
 
 - **Anzahl Runden:** 1, 3 (Best of 3) oder 5 (Best of 5). Standard: 3.
-- **Arena:** eine der Arenen oder „Zufall".
+- **Arena:** Beide Spieler stimmen ab. Bei Uneinigkeit entscheidet der Zufall.
 - **Gleiche Ausrüstung erzwingen:** An = beide müssen dieselbe Waffe und Rüstung nehmen (reiner Können-Vergleich). Aus = freie Wahl.
 - **Schaden-Regeln:**
   - *Realistisch:* wenig Lebenspunkte, Treffer tun richtig weh, Kämpfe sind kürzer.
@@ -125,6 +125,12 @@ Optional wählbar **eine Wurfaxt pro Kampf** (statt eines kleinen Vorteils, z. B
 ### 4.6 Ablauf einer Runde (Beispiel)
 
 Beide Spieler starten an gegenüberliegenden Seiten. Man umkreist sich, testet mit einem Schlag, sieht den Block, wartet, lässt den Gegner Ausdauer verbrauchen, und schlägt dann zu, wenn er müde ist. Eine gute Runde dauert etwa 60 bis 90 Sekunden.
+
+### 4.6a Block-Folgen, Waffen und Aufgeben
+
+- Ein geblockter Schlag kostet den Verteidiger nur **Ausdauer** (bei schweren Waffen mehr). Waffen und Schilde gehen nicht kaputt.
+- **Kein Entwaffnen:** Die Waffe bleibt immer in der Hand (nur die Wurfaxt kann am Boden liegen).
+- **Aufgeben:** Jederzeit per Taste mit Bestätigung. Man verliert die Runde.
 
 ### 4.7 Letzte Chance (Todesstoß-Moment)
 
@@ -218,6 +224,8 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 - **3D im Browser:** Three.js (läuft in jedem modernen Browser).
 - **Online-Verbindung:** Ein kleiner Server (Node.js mit WebSockets) verwaltet die Räume und entscheidet über Treffer (damit niemand schummeln kann). Alternativ direkte Verbindung zwischen den Spielern (WebRTC), was billiger, aber anfälliger für Verzögerungen und Schummeln ist.
 - **Raum-Links:** Kurzer Code in der Adresse, keine Datenbank nötig, Räume leben nur im Speicher.
+- **Server entscheidet:** Der Server bestimmt Treffer und Blocks (kein Schummeln). Eine kleine Verzögerung wird bewusst akzeptiert.
+- **Kein Chat:** Kommunikation läuft extern (Discord, Handy). Spart Aufwand.
 - **Wichtig für langsamen Kampf:** Weil alles absichtlich langsam ist (Ausholen dauert ~0,5 bis 1,5 Sekunden), ist eine kleine Verzögerung (Ping) verkraftbar. Das ist ein großer Vorteil gegenüber schnellen Actionspielen.
 - **Hosting:** Ein günstiger Dienst reicht für Freunde (kostenlose oder sehr günstige Stufen).
 - **Assets:** Low-Poly-Modelle und Animationen, entweder selbst gebaut oder freie Pakete.
@@ -231,6 +239,8 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 - Eine Arena (Burghof), zwei Waffen (Schwert + Schild, Zweihänder), zwei Rüstungsstufen
 - Richtungs-Angriff, Block, Ausdauer, Trefferzonen, Lebenspunkte
 - Runden (1/3/5)
+
+**Stufe 1b – Übungsmodus:** Alleine gegen eine Trainingspuppe, um Steuerung und Waffen zu testen.
 
 **Stufe 2 – Vollständiger Inhalt**
 - Alle 6 Waffen, alle 3 Rüstungsstufen, Wurfaxt
@@ -251,9 +261,8 @@ Das ist nur ein Vorschlag, damit das Konzept realistisch bleibt:
 - **Name des Spiels:** Bleibt vorerst „1on1", später entscheiden.
 - **Genaue Trefferzonen-Logik:** Wie genau bestimmt die Richtung die Zone? Muss im Test ausprobiert werden.
 - **Tastenbelegung** für Wurfaxt, Rennen, Ausweichrolle, Aufgeben.
-- **Aufgeben-Knopf:** Soll man jederzeit aufgeben können?
 - **Hosting/Kosten:** Wo soll der Server laufen, wer bezahlt?
-- **Übungsmodus:** Soll man alleine gegen eine Puppe üben können?
-- **Sprach-/Text-Chat** zwischen den Spielern oder nur extern (Discord, Handy)?
 
-Bereits entschieden (in dieser Runde): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
+Bereits entschieden (frühere Runden): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
+
+Bereits entschieden (letzte Runde): Server entscheidet bei Treffern, beide stimmen über die Arena ab, Ausrüstung wird vor jeder Runde neu (geheim) gewählt, Übungsmodus gegen Puppe, Aufgeben per Taste mit Bestätigung, kein Chat, Blocks kosten nur Ausdauer, kein Entwaffnen.
