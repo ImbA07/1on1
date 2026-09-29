@@ -164,25 +164,52 @@ test('Eingaben bewegen die Figur, Server bestaetigt mit ack', async () => {
     await a.waitFor('room', (m) => m.phase === 'arena');
     await a.waitFor('state');
 
-    // 30 Schritte nach vorne (yaw 0 = -z). A startet bei z = 6.
-    for (let seq = 1; seq <= 30; seq++) {
+    // 10 Schritte nach vorne (yaw 0 = -z). A startet bei z = 6. 10 liegt im erlaubten Vorrat.
+    for (let seq = 1; seq <= 10; seq++) {
       a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: false });
     }
-    const state = await a.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 30);
+    const state = await a.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 10);
     const me = state.players.find((p) => p.id === room.youId)!;
-    assert.ok(me.z < 6 - 2, `z sollte deutlich kleiner als 6 sein, ist ${me.z}`);
+    const walked = 6 - me.z;
+    assert.ok(Math.abs(walked - 10 * 2.4 * (1 / 30)) < 0.05, `10 Schritte = ca. 0,8 m, gelaufen: ${walked}`);
     assert.ok(Math.abs(me.x) < 1e-6);
 
     // Der Gegner sieht die Bewegung auch
-    const stateB = await b.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 30);
+    const stateB = await b.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 10);
     assert.equal(stateB.players.find((p) => p.id === room.youId)!.z, me.z);
 
     // Alte Eingaben (seq zu klein) werden ignoriert
     a.send({ t: 'input', seq: 5, fwd: 1, right: 0, yaw: 0, sprint: false });
     await new Promise((r) => setTimeout(r, 150));
     const last = [...a.messages].reverse().find((m): m is Extract<ServerMessage, { t: 'state' }> => m.t === 'state')!;
-    assert.equal(last.players.find((p) => p.id === room.youId)!.ack, 30);
+    assert.equal(last.players.find((p) => p.id === room.youId)!.ack, 10);
 
+    a.close();
+    b.close();
+  });
+});
+
+test('Eingaben-Flut macht nicht schneller (kein Speed-Hack, kein Teleport)', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    const b = await connect(game);
+    a.send({ t: 'create', name: 'A' });
+    const room = await a.waitFor('room');
+    b.send({ t: 'join', code: room.code, name: 'B' });
+    await b.waitFor('room');
+    a.send({ t: 'start' });
+    await a.waitFor('room', (m) => m.phase === 'arena');
+
+    // 200 Sprint-Eingaben auf einmal (= 6,7 Sekunden Bewegung in wenigen Millisekunden)
+    for (let seq = 1; seq <= 200; seq++) {
+      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: true });
+    }
+    const state = await a.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 200);
+    const me = state.players.find((p) => p.id === room.youId)!;
+    const walked = 6 - me.z;
+    // Erlaubt: Vorrat (15) plus etwas Nachschub waehrend des Sendens, hoechstens ca. 20 Schritte
+    assert.ok(walked < 20 * 4.2 * (1 / 30) + 0.01, `zu weit gelaufen: ${walked} m`);
+    assert.ok(walked > 5 * 4.2 * (1 / 30), 'ein Teil der Eingaben muss zaehlen');
     a.close();
     b.close();
   });

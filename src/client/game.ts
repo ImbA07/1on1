@@ -32,7 +32,6 @@ interface SelfState {
   pred: SimState;
   renderX: number;
   renderZ: number;
-  seq: number;
   pending: Array<{ seq: number; input: MoveInput }>;
 }
 
@@ -65,6 +64,9 @@ export class Game {
   private lockOn = false;
   private pointerLocked = false;
   private acc = 0;
+  // Laeuft ueber alle Runden weiter. So kann eine verspaetete Eingabe aus der
+  // Vorrunde niemals neue Eingaben blockieren (der Server nimmt nur hoehere Nummern an).
+  private seq = 0;
   private lastFrame = performance.now();
   private menuAngle = 0.6;
   private elapsed = 0;
@@ -114,7 +116,6 @@ export class Game {
       pred: newSimState(spawn.x, spawn.z, spawn.yaw),
       renderX: spawn.x,
       renderZ: spawn.z,
-      seq: 0,
       pending: [],
     };
 
@@ -171,6 +172,15 @@ export class Game {
   onState(players: NetPlayerState[]): void {
     if (this.mode !== 'arena' || !this.self) return;
 
+    // Zuerst den Gegner aktualisieren: Das Neuabspielen unten rechnet mit dessen neuester Position
+    const other = players.find((p) => p.id !== this.self!.id);
+    if (other && this.opp) {
+      this.opp.latest = { x: other.x, z: other.z };
+      this.opp.sprinting = other.sp;
+      this.opp.snaps.push({ t: performance.now(), x: other.x, z: other.z, yaw: other.yaw, sp: other.sp });
+      if (this.opp.snaps.length > 30) this.opp.snaps.shift();
+    }
+
     const me = players.find((p) => p.id === this.self!.id);
     if (me) {
       const s = this.self;
@@ -185,14 +195,6 @@ export class Game {
       // Vom Server schon verarbeitete Eingaben verwerfen, die restlichen erneut abspielen
       while (s.pending.length && s.pending[0]!.seq <= me.ack) s.pending.shift();
       for (const item of s.pending) stepPlayer(p, item.input, this.opp?.latest);
-    }
-
-    const other = players.find((p) => p.id !== this.self!.id);
-    if (other && this.opp) {
-      this.opp.latest = { x: other.x, z: other.z };
-      this.opp.sprinting = other.sp;
-      this.opp.snaps.push({ t: performance.now(), x: other.x, z: other.z, yaw: other.yaw, sp: other.sp });
-      if (this.opp.snaps.length > 30) this.opp.snaps.shift();
     }
   }
 
@@ -333,11 +335,11 @@ export class Game {
   private tick(): void {
     const self = this.self!;
     const input = this.readInput();
-    self.seq += 1;
+    this.seq += 1;
     stepPlayer(self.pred, input, this.opp?.latest);
-    self.pending.push({ seq: self.seq, input });
+    self.pending.push({ seq: this.seq, input });
     if (self.pending.length > 150) self.pending.shift();
-    this.net.send({ t: 'input', seq: self.seq, fwd: input.fwd, right: input.right, yaw: input.yaw, sprint: input.sprint });
+    this.net.send({ t: 'input', seq: this.seq, fwd: input.fwd, right: input.right, yaw: input.yaw, sprint: input.sprint });
     this.hud.onStamina(self.pred.stamina, self.pred.exhausted);
   }
 

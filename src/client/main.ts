@@ -38,7 +38,7 @@ let inviteCode: string | null = inviteMatch ? normalizeCode(inviteMatch[1]) : nu
 
 let room: RoomView | null = null;
 let inArena = false;
-let leaving = false;
+let connecting = false; // verhindert doppeltes Absenden (z. B. zweimal Enter)
 
 function showMenu(error?: string): void {
   room = null;
@@ -59,6 +59,8 @@ function showMenu(error?: string): void {
 }
 
 async function connectAnd(name: string, first: { t: 'create'; name: string } | { t: 'join'; code: string; name: string }): Promise<void> {
+  if (connecting) return;
+  connecting = true;
   saveName(name);
   ui.setMenuStatus('Verbinde mit dem Server ...');
   // Kostenlose Server "schlafen" und brauchen beim ersten Aufruf bis zu einer Minute.
@@ -70,16 +72,18 @@ async function connectAnd(name: string, first: { t: 'create'; name: string } | {
     await net.connect();
   } catch {
     window.clearTimeout(slowTimer);
+    connecting = false;
     showMenu('Keine Verbindung zum Server. Bitte versuch es gleich noch einmal.');
     return;
   }
   window.clearTimeout(slowTimer);
   net.send(first);
+  // Kurz sperren, damit ein zweites Enter nicht noch einmal abschickt
+  window.setTimeout(() => (connecting = false), 1500);
 }
 
 function leaveRoom(): void {
-  leaving = true;
-  net.close();
+  net.close(); // absichtlich: meldet kein "Verbindung verloren"
   inviteCode = null;
   history.replaceState(null, '', '/');
   showMenu();
@@ -122,10 +126,6 @@ net.onMessage = (msg) => {
 };
 
 net.onClose = () => {
-  if (leaving) {
-    leaving = false;
-    return;
-  }
   game.enterMenu();
   inArena = false;
   room = null;

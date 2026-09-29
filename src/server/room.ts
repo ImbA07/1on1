@@ -10,15 +10,19 @@ import {
   type Phase,
   type ServerMessage,
 } from '../shared/protocol.js';
-import { SPAWNS, newSimState, sanitizeInput, stepPlayer, type SimState } from '../shared/sim.js';
+import { SPAWNS, TICK_RATE, newSimState, sanitizeInput, stepPlayer, type SimState } from '../shared/sim.js';
 
 export const MAX_PLAYERS = 2;
 const EMPTY_ROOM_TTL_MS = 60_000;
 const MAX_ROOMS = 1000;
 
-// Eingaben pro Sekunde: Der Client sendet 30/s. Etwas Spielraum, aber kein Dauerfeuer.
-const INPUT_BUCKET_CAPACITY = 60;
-const INPUT_REFILL_PER_SEC = 45;
+// Jede Eingabe ist ein voller Simulationsschritt (1/30 s). Damit niemand durch
+// Eingaben-Fluten schneller laufen oder "teleportieren" kann, darf ein Spieler
+// im Schnitt nur so viele Schritte machen, wie Zeit vergangen ist (30 pro Sekunde,
+// plus 3 % Toleranz). Der Vorrat ist klein (0,5 s), damit Netz-Hakler ehrlicher
+// Spieler noch aufgefangen werden, ein gestauter Schwung aber kein Teleport wird.
+const INPUT_BUCKET_CAPACITY = 15;
+const INPUT_REFILL_PER_SEC = TICK_RATE * 1.03;
 
 interface Player {
   id: string;
@@ -102,9 +106,10 @@ export class RoomManager {
         x: round(p.sim.x),
         z: round(p.sim.z),
         yaw: round(p.sim.yaw),
-        st: round(p.sim.stamina, 2),
+        // Ausdauer und Pause bewusst ungerundet: Der Client muss exakt gleich weiterrechnen
+        st: p.sim.stamina,
         ex: p.sim.exhausted,
-        rd: round(p.sim.regenDelay, 2),
+        rd: p.sim.regenDelay,
         sp: p.sim.sprinting,
         ack: p.ack,
       }));
@@ -125,6 +130,10 @@ export class RoomManager {
 
   private create(ws: WebSocket, rawName: string): void {
     if (this.byWs.has(ws)) return send(ws, { t: 'error', message: 'Du bist schon in einem Raum.' });
+    if (this.rooms.size >= MAX_ROOMS) {
+      // Leere Raeume sofort wegraeumen, damit sie das Limit nicht blockieren koennen
+      for (const [code, r] of this.rooms) if (r.players.length === 0) this.rooms.delete(code);
+    }
     if (this.rooms.size >= MAX_ROOMS) {
       return send(ws, { t: 'error', message: 'Gerade sind zu viele Räume offen. Versuch es später noch einmal.' });
     }
@@ -166,6 +175,8 @@ export class RoomManager {
       const s = SPAWNS[i]!;
       p.sim = newSimState(s.x, s.z, s.yaw);
       p.ack = 0;
+      p.tokens = INPUT_BUCKET_CAPACITY;
+      p.lastRefill = Date.now();
     });
     room.phase = 'arena';
     this.broadcastRoom(room);
@@ -190,18 +201,23 @@ export class RoomManager {
     const { room, player } = entry;
     if (room.phase !== 'arena') return;
 
-    // Zu viele Eingaben pro Sekunde? Dann verwerfen.
+    // Reihenfolge einhalten: nur neuere Eingaben zaehlen
+    if (typeof msg.seq !== 'number' || !Number.isFinite(msg.seq) || msg.seq <= player.ack) return;
+
+    // Mehr Eingaben als Zeit vergangen ist? Dann wird der Schritt NICHT ausgefuehrt.
+    // Wir bestaetigen ihn trotzdem (ack), damit der Client ihn nicht ewig als
+    // "offen" mitschleppt und stattdessen auf den Server-Stand zurueckgesetzt wird.
     const now = Date.now();
     player.tokens = Math.min(
       INPUT_BUCKET_CAPACITY,
       player.tokens + ((now - player.lastRefill) / 1000) * INPUT_REFILL_PER_SEC,
     );
     player.lastRefill = now;
-    if (player.tokens < 1) return;
+    if (player.tokens < 1) {
+      player.ack = msg.seq;
+      return;
+    }
     player.tokens -= 1;
-
-    // Reihenfolge einhalten: nur neuere Eingaben zaehlen
-    if (typeof msg.seq !== 'number' || !Number.isFinite(msg.seq) || msg.seq <= player.ack) return;
 
     const other = room.players.find((p) => p !== player);
     stepPlayer(player.sim, sanitizeInput(msg), other?.sim);
