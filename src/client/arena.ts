@@ -26,6 +26,7 @@ import {
 import { buildCloth, buildCurb, buildIvy, buildProps, buildStraw, type PropInfo } from './gfx/arena-props.js';
 import { buildCrowd, buildFlames, buildParticles, buildRain, buildSmoke, type Emitter } from './gfx/arena-fx.js';
 import { buildCrows, buildEnvironment, buildLandscape, buildSky, sunDirection } from './gfx/arena-sky.js';
+import { GroundFog, installGroundFog } from './gfx/arena-groundfog.js';
 
 // Burghof: prozedural gebaut. Mauern mit Steinlagen, Tuerme, Torhaus, Palas mit Zuschauern,
 // Tribuene, Pflaster mit Pfuetzen, Fackeln, Banner im Wind, Wolkenhimmel, Landschaft.
@@ -78,7 +79,10 @@ export function buildArena(scene: THREE.Scene, mood?: ArenaMood): Arena {
   group.add(sun, sun.target);
 
   scene.background = new THREE.Color(M.fogColor);
-  scene.fog = new THREE.FogExp2(M.fogColor, M.fogDensity);
+  // Bodennebel erweitert die Nebel-Bausteine aller Materialien; ohne ihn gilt der normale FogExp2
+  installGroundFog(M.groundFog ?? null);
+  const groundFog = M.groundFog ? new GroundFog(M.fogColor, M.fogDensity) : null;
+  scene.fog = groundFog ?? new THREE.FogExp2(M.fogColor, M.fogDensity);
   scene.environment = buildEnvironment(M, sunDir);
   scene.environmentIntensity = M.envIntensity;
   group.add(buildSky(M, sunDir));
@@ -115,7 +119,7 @@ export function buildArena(scene: THREE.Scene, mood?: ArenaMood): Arena {
     }),
     iron: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.48, metalness: 0.7, flatShading: true }),
     generic: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: true, side: THREE.DoubleSide }),
-    cloth: clothMaterial(bannerAtlas()),
+    cloth: clothMaterial(bannerAtlas(), M.clothGlow ?? 0),
     ivy: new THREE.MeshStandardMaterial({
       map: ivyTexture(),
       vertexColors: true,
@@ -227,6 +231,7 @@ export function buildArena(scene: THREE.Scene, mood?: ArenaMood): Arena {
     group,
     update(time: number) {
       sharedUniforms.uTime.value = time;
+      if (groundFog) groundFog.time = time;
       for (let i = 0; i < fireLights.length; i++) {
         const f = 1 + Math.sin(time * 9.3 + i * 2.1) * 0.08 + Math.sin(time * 17.1 + i * 1.3) * 0.06 + Math.sin(time * 3.1 + i) * 0.05;
         fireLights[i]!.intensity = base * f;

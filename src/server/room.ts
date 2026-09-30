@@ -6,32 +6,45 @@ import {
   cleanName,
   normalizeCode,
   type ClientMessage,
-  type NetPlayerState,
+  type NetEvent,
   type Phase,
+  type PlayerInfo,
   type ServerMessage,
 } from '../shared/protocol.js';
-import { SPAWNS, TICK_RATE, newSimState, sanitizeInput, stepPlayer, type SimState } from '../shared/sim.js';
+import { simToNet } from '../shared/netstate.js';
+import { SPAWNS, TICK_RATE, newSimState, sanitizeInput, stepPlayer, type MoveInput, type SimState } from '../shared/sim.js';
+import { BotBrain } from './bot.js';
+import { Match } from './match.js';
+import { resolveStrikes, type Fighter } from './resolve.js';
 
 export const MAX_PLAYERS = 2;
 const EMPTY_ROOM_TTL_MS = 60_000;
 const MAX_ROOMS = 1000;
+export const TICK_MS = 1000 / TICK_RATE;
+const MAX_CATCHUP_TICKS = 6;
 
-// Jede Eingabe ist ein voller Simulationsschritt (1/30 s). Damit niemand durch
-// Eingaben-Fluten schneller laufen oder "teleportieren" kann, darf ein Spieler
-// im Schnitt nur so viele Schritte machen, wie Zeit vergangen ist (30 pro Sekunde,
-// plus 3 % Toleranz). Der Vorrat ist klein (0,5 s), damit Netz-Hakler ehrlicher
-// Spieler noch aufgefangen werden, ein gestauter Schwung aber kein Teleport wird.
-const INPUT_BUCKET_CAPACITY = 15;
-const INPUT_REFILL_PER_SEC = TICK_RATE * 1.03;
+// Eingaben werden vom Server genau EINE pro Tick abgearbeitet. Damit kann niemand durch
+// Eingaben-Fluten schneller laufen oder schneller zuschlagen. Ein kleiner Puffer faengt
+// Netz-Schwankungen ab; wird er zu gross, werden die aeltesten Eingaben verworfen.
+const MAX_QUEUE = 5;
+
+const IDLE_INPUT: MoveInput = { fwd: 0, right: 0, yaw: 0, sprint: false, atk: false, blk: false, dir: 0 };
+
+interface QueuedInput {
+  seq: number;
+  input: MoveInput;
+}
 
 interface Player {
   id: string;
   name: string;
-  ws: WebSocket;
+  ws: WebSocket | null; // null = Trainings-Puppe
+  bot: BotBrain | null;
   sim: SimState;
-  ack: number;
-  tokens: number;
-  lastRefill: number;
+  ack: number; // zuletzt verarbeitete Eingabe
+  lastSeq: number; // hoechste angenommene Eingabe
+  queue: QueuedInput[];
+  lastInput: MoveInput;
 }
 
 interface Room {
@@ -40,20 +53,19 @@ interface Room {
   hostId: string;
   phase: Phase;
   emptySince: number | null;
+  practice: boolean;
+  match: Match | null;
+  tick: number;
 }
 
-function send(ws: WebSocket, msg: ServerMessage): void {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
-}
-
-function round(v: number, digits = 3): number {
-  const f = 10 ** digits;
-  return Math.round(v * f) / f;
+function send(ws: WebSocket | null, msg: ServerMessage): void {
+  if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
 
 export class RoomManager {
   private rooms = new Map<string, Room>();
   private byWs = new WeakMap<WebSocket, { room: Room; player: Player }>();
+  private nextTickAt = 0;
 
   get roomCount(): number {
     return this.rooms.size;
@@ -62,13 +74,15 @@ export class RoomManager {
   handle(ws: WebSocket, msg: ClientMessage): void {
     switch (msg.t) {
       case 'create':
-        return this.create(ws, msg.name);
+        return this.create(ws, msg.name, msg.practice === true);
       case 'join':
         return this.join(ws, msg.code, msg.name);
       case 'start':
         return this.start(ws);
       case 'toLobby':
         return this.toLobby(ws);
+      case 'rematch':
+        return this.rematch(ws);
       case 'input':
         return this.input(ws, msg);
       case 'ping':
@@ -83,38 +97,38 @@ export class RoomManager {
     const { room, player } = entry;
     room.players = room.players.filter((p) => p !== player);
 
-    if (room.players.length === 0) {
+    // Ohne Menschen im Raum (auch nicht mit Puppe) gibt es nichts mehr zu tun
+    if (room.players.every((p) => p.bot)) {
+      room.players = [];
       room.emptySince = Date.now();
       room.phase = 'lobby';
+      room.match = null;
+      if (room.practice) this.rooms.delete(room.code);
       return;
     }
 
     if (room.hostId === player.id) room.hostId = room.players[0]!.id;
     room.phase = 'lobby';
+    room.match = null;
     for (const p of room.players) {
       send(p.ws, { t: 'info', message: `${player.name} hat den Raum verlassen.` });
     }
     this.broadcastRoom(room);
   }
 
-  /** Wird regelmaessig aufgerufen: schickt den Spielstand an alle Raeume im Kampf. */
-  broadcastStates(): void {
-    for (const room of this.rooms.values()) {
-      if (room.phase !== 'arena') continue;
-      const players: NetPlayerState[] = room.players.map((p) => ({
-        id: p.id,
-        x: round(p.sim.x),
-        z: round(p.sim.z),
-        yaw: round(p.sim.yaw),
-        // Ausdauer und Pause bewusst ungerundet: Der Client muss exakt gleich weiterrechnen
-        st: p.sim.stamina,
-        ex: p.sim.exhausted,
-        rd: p.sim.regenDelay,
-        sp: p.sim.sprinting,
-        ack: p.ack,
-      }));
-      for (const p of room.players) send(p.ws, { t: 'state', players });
+  /**
+   * Wird oft aufgerufen (z. B. alle 5 ms). Fuehrt so viele Spielschritte aus, wie seit dem
+   * letzten Mal an Zeit vergangen ist (30 pro Sekunde), unabhaengig von Timer-Ungenauigkeit.
+   */
+  advance(nowMs: number): void {
+    if (this.nextTickAt === 0) this.nextTickAt = nowMs;
+    let n = 0;
+    while (nowMs >= this.nextTickAt && n < MAX_CATCHUP_TICKS) {
+      this.runTick();
+      this.nextTickAt += TICK_MS;
+      n++;
     }
+    if (nowMs - this.nextTickAt > TICK_MS * MAX_CATCHUP_TICKS) this.nextTickAt = nowMs; // zu weit zurueck: aufgeben
   }
 
   /** Raeume ohne Spieler nach einer Weile loeschen. */
@@ -126,9 +140,67 @@ export class RoomManager {
     }
   }
 
+  // ---- Spielschritt ----
+
+  private runTick(): void {
+    for (const room of this.rooms.values()) {
+      if (room.phase !== 'arena' || !room.match || room.players.length < 2) continue;
+      this.tickRoom(room);
+    }
+  }
+
+  private tickRoom(room: Room): void {
+    const match = room.match!;
+    const events: NetEvent[] = [];
+    const fighters = room.players.map((p) => ({ id: p.id, sim: p.sim })) as [Fighter, Fighter];
+    const frozen = match.phase === 'roundEnd' || match.phase === 'matchEnd';
+
+    room.tick++;
+    room.players.forEach((p, i) => {
+      const other = room.players[1 - i]!;
+      let input: MoveInput;
+      if (p.bot) {
+        input = p.bot.think(p.sim, other.sim, match.canAct);
+      } else {
+        const q = p.queue.shift();
+        if (q) {
+          input = q.input;
+          p.ack = q.seq;
+          p.lastInput = q.input;
+        } else {
+          input = p.lastInput; // keine neue Eingabe angekommen: letzte weiterlaufen lassen
+        }
+      }
+      if (frozen) input = { ...input, fwd: 0, right: 0, sprint: false, atk: false, blk: false };
+      stepPlayer(p.sim, input, other.sim, match.canAct);
+    });
+
+    if (match.phase === 'fight') {
+      let winner = resolveStrikes(fighters, match.stats, events);
+      if (winner < 0) winner = match.checkLastChance(fighters);
+      if (winner >= 0) match.endRound(winner, fighters, events);
+    }
+    match.advance(fighters);
+    // Nach einem Zuruecksetzen (neue Runde) zeigen die Figuren auf frische Zustaende
+    room.players.forEach((p, i) => (p.sim = fighters[i]!.sim));
+
+    this.broadcastState(room, events);
+  }
+
+  private broadcastState(room: Room, events: NetEvent[]): void {
+    const match = room.match!;
+    const fighters = room.players.map((p) => ({ id: p.id, sim: p.sim })) as [Fighter, Fighter];
+    const netMatch = match.toNet(fighters);
+    for (const viewer of room.players) {
+      if (!viewer.ws) continue;
+      const players = room.players.map((p) => simToNet(p.id, p.sim, p.ack, p === viewer));
+      send(viewer.ws, { t: 'state', tk: room.tick, players, ev: events, match: netMatch });
+    }
+  }
+
   // ---- Nachrichten ----
 
-  private create(ws: WebSocket, rawName: string): void {
+  private create(ws: WebSocket, rawName: string, practice: boolean): void {
     if (this.byWs.has(ws)) return send(ws, { t: 'error', message: 'Du bist schon in einem Raum.' });
     if (this.rooms.size >= MAX_ROOMS) {
       // Leere Raeume sofort wegraeumen, damit sie das Limit nicht blockieren koennen
@@ -143,17 +215,24 @@ export class RoomManager {
       hostId: '',
       phase: 'lobby',
       emptySince: null,
+      practice,
+      match: null,
+      tick: 0,
     };
     this.rooms.set(room.code, room);
     this.addPlayer(room, ws, rawName);
     room.hostId = room.players[0]!.id;
+    if (practice) {
+      this.addBot(room);
+      this.beginArena(room);
+    }
     this.broadcastRoom(room);
   }
 
   private join(ws: WebSocket, rawCode: string, rawName: string): void {
     if (this.byWs.has(ws)) return send(ws, { t: 'error', message: 'Du bist schon in einem Raum.' });
     const room = this.rooms.get(normalizeCode(rawCode));
-    if (!room) return send(ws, { t: 'error', message: 'Diesen Raum gibt es nicht (mehr). Bitte einen neuen Link holen.' });
+    if (!room || room.practice) return send(ws, { t: 'error', message: 'Diesen Raum gibt es nicht (mehr). Bitte einen neuen Link holen.' });
     if (room.players.length >= MAX_PLAYERS) return send(ws, { t: 'error', message: 'Der Raum ist schon voll.' });
     room.emptySince = null;
     this.addPlayer(room, ws, rawName);
@@ -170,17 +249,21 @@ export class RoomManager {
     if (room.hostId !== player.id) return send(ws, { t: 'error', message: 'Nur der Ersteller kann den Kampf starten.' });
     if (room.players.length < MAX_PLAYERS) return send(ws, { t: 'error', message: 'Es fehlt noch ein Gegner.' });
     if (room.phase === 'arena') return;
+    this.beginArena(room);
+    this.broadcastRoom(room);
+  }
 
+  private beginArena(room: Room): void {
+    room.match = new Match(2);
     room.players.forEach((p, i) => {
       const s = SPAWNS[i]!;
       p.sim = newSimState(s.x, s.z, s.yaw);
       p.ack = 0;
-      p.tokens = INPUT_BUCKET_CAPACITY;
-      p.lastRefill = Date.now();
+      p.queue = [];
+      p.lastInput = { ...IDLE_INPUT, yaw: s.yaw };
     });
     room.phase = 'arena';
-    this.broadcastRoom(room);
-    this.broadcastStates();
+    room.tick = 0;
   }
 
   private toLobby(ws: WebSocket): void {
@@ -188,11 +271,36 @@ export class RoomManager {
     if (!entry) return;
     const { room, player } = entry;
     if (room.phase === 'lobby') return;
+    if (room.practice) {
+      // Training hat keine Lobby: zurueck bedeutet, den Raum zu verlassen (Client macht das)
+      return;
+    }
     room.phase = 'lobby';
+    room.match = null;
     for (const p of room.players) {
       if (p !== player) send(p.ws, { t: 'info', message: `${player.name} ist zurück in die Lobby gegangen.` });
     }
     this.broadcastRoom(room);
+  }
+
+  private rematch(ws: WebSocket): void {
+    const entry = this.byWs.get(ws);
+    if (!entry) return;
+    const { room, player } = entry;
+    const match = room.match;
+    if (!match || match.phase !== 'matchEnd') return;
+    match.rematch.add(player.id);
+    for (const p of room.players) if (p.bot) match.rematch.add(p.id);
+    if (room.players.every((p) => match.rematch.has(p.id))) {
+      const fighters = room.players.map((p) => ({ id: p.id, sim: p.sim })) as [Fighter, Fighter];
+      match.restart(fighters);
+      room.players.forEach((p, i) => {
+        p.sim = fighters[i]!.sim;
+        p.queue = [];
+        p.ack = 0;
+        p.lastSeq = 0;
+      });
+    }
   }
 
   private input(ws: WebSocket, msg: Extract<ClientMessage, { t: 'input' }>): void {
@@ -201,52 +309,56 @@ export class RoomManager {
     const { room, player } = entry;
     if (room.phase !== 'arena') return;
 
-    // Reihenfolge einhalten: nur neuere Eingaben zaehlen
-    if (typeof msg.seq !== 'number' || !Number.isFinite(msg.seq) || msg.seq <= player.ack) return;
-
-    // Mehr Eingaben als Zeit vergangen ist? Dann wird der Schritt NICHT ausgefuehrt.
-    // Wir bestaetigen ihn trotzdem (ack), damit der Client ihn nicht ewig als
-    // "offen" mitschleppt und stattdessen auf den Server-Stand zurueckgesetzt wird.
-    const now = Date.now();
-    player.tokens = Math.min(
-      INPUT_BUCKET_CAPACITY,
-      player.tokens + ((now - player.lastRefill) / 1000) * INPUT_REFILL_PER_SEC,
-    );
-    player.lastRefill = now;
-    if (player.tokens < 1) {
-      player.ack = msg.seq;
-      return;
-    }
-    player.tokens -= 1;
-
-    const other = room.players.find((p) => p !== player);
-    stepPlayer(player.sim, sanitizeInput(msg), other?.sim);
-    player.ack = msg.seq;
+    // Nur neuere Eingaben zaehlen (Reihenfolge einhalten)
+    if (typeof msg.seq !== 'number' || !Number.isFinite(msg.seq) || msg.seq <= player.lastSeq) return;
+    player.lastSeq = msg.seq;
+    player.queue.push({ seq: msg.seq, input: sanitizeInput(msg) });
+    // Zu viele auf einmal: die aeltesten fallen weg (ihr ack springt dann weiter)
+    while (player.queue.length > MAX_QUEUE) player.queue.shift();
   }
 
   // ---- Hilfsfunktionen ----
 
   private addPlayer(room: Room, ws: WebSocket, rawName: string): Player {
     const name = cleanName(rawName) || 'Ritter';
+    const player = this.makePlayer(room, name, ws, null);
+    this.byWs.set(ws, { room, player });
+    return player;
+  }
+
+  private addBot(room: Room): void {
+    this.makePlayer(room, 'Trainingspuppe', null, new BotBrain(randomInt(1, 1_000_000)));
+  }
+
+  private makePlayer(room: Room, name: string, ws: WebSocket | null, bot: BotBrain | null): Player {
     const spawn = SPAWNS[room.players.length] ?? SPAWNS[0]!;
     const player: Player = {
       id: randomUUID().slice(0, 8),
       name,
       ws,
+      bot,
       sim: newSimState(spawn.x, spawn.z, spawn.yaw),
       ack: 0,
-      tokens: INPUT_BUCKET_CAPACITY,
-      lastRefill: Date.now(),
+      lastSeq: 0,
+      queue: [],
+      lastInput: { ...IDLE_INPUT, yaw: spawn.yaw },
     };
     room.players.push(player);
-    this.byWs.set(ws, { room, player });
     return player;
   }
 
   private broadcastRoom(room: Room): void {
-    const players = room.players.map((p) => ({ id: p.id, name: p.name }));
+    const players: PlayerInfo[] = room.players.map((p) => ({ id: p.id, name: p.name, ...(p.bot ? { bot: true } : {}) }));
     for (const p of room.players) {
-      send(p.ws, { t: 'room', code: room.code, youId: p.id, hostId: room.hostId, phase: room.phase, players });
+      send(p.ws, {
+        t: 'room',
+        code: room.code,
+        youId: p.id,
+        hostId: room.hostId,
+        phase: room.phase,
+        players,
+        practice: room.practice,
+      });
     }
   }
 

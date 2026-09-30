@@ -10,15 +10,27 @@ export type Phase = 'lobby' | 'arena';
 export interface PlayerInfo {
   id: string;
   name: string;
+  bot?: boolean;
 }
 
 // ---- Client -> Server ----
 export type ClientMessage =
-  | { t: 'create'; name: string }
+  | { t: 'create'; name: string; practice?: boolean } // practice = Training gegen die Puppe
   | { t: 'join'; code: string; name: string }
   | { t: 'start' } // nur der Ersteller
   | { t: 'toLobby' } // zurueck in die Lobby
-  | { t: 'input'; seq: number; fwd: number; right: number; yaw: number; sprint: boolean }
+  | { t: 'rematch' } // nach Kampfende: nochmal
+  | {
+      t: 'input';
+      seq: number;
+      fwd: number;
+      right: number;
+      yaw: number;
+      sprint: boolean;
+      atk: boolean; // linke Maustaste gehalten
+      blk: boolean; // rechte Maustaste gehalten
+      dir: number; // Richtung 0 oben / 1 links / 2 rechts
+    }
   | { t: 'ping' };
 
 // ---- Server -> Client ----
@@ -32,11 +44,68 @@ export interface NetPlayerState {
   rd: number; // Pause bis zur Ausdauer-Erholung
   sp: boolean; // rennt
   ack: number; // zuletzt verarbeitete Eingabe dieses Spielers
+  // Kampf
+  ac: number; // Aktion (Act)
+  d: number; // Richtung
+  at: number; // Ticks in der Aktion
+  sg: number; // Taumeln
+  dz: number; // Benommenheit
+  am: number; // Armtreffer-Nachwirkung
+  lg: number; // Beintreffer-Nachwirkung
+  dn: boolean; // "Letzte Chance": am Boden
+  dt: number; // Ticks der letzten Chance
+  rv: boolean; // Letzte Chance schon genutzt
+  hd: boolean; // aktueller Schlag hat schon getroffen/wurde geblockt
+  pa: boolean; // Taste-Zustand des letzten Ticks
+  pb: boolean;
+  hp?: number; // nur im eigenen Eintrag: Lebenspunkte (kein Balken, nur fuer Effekte)
+}
+
+export type NetEvent =
+  | { k: 'hit'; a: string; d: string; z: number; dmg: number; fin?: boolean }
+  | { k: 'block'; a: string; d: string }
+  | { k: 'parry'; a: string; d: string }
+  | { k: 'break'; d: string } // Block durchbrochen (Ausdauer leer)
+  | { k: 'down'; id: string }
+  | { k: 'revive'; id: string }
+  | { k: 'round'; w: string } // Runde gewonnen von w
+  | { k: 'match'; w: string }; // Kampf gewonnen von w
+
+export type MatchPhase = 'countdown' | 'fight' | 'roundEnd' | 'matchEnd';
+
+export interface NetStats {
+  id: string;
+  hits: number;
+  damage: number;
+  taken: number;
+  blocks: number;
+  parries: number;
+  zones: [number, number, number, number]; // Kopf, Torso, Arm, Bein
+}
+
+export interface NetMatch {
+  ph: MatchPhase;
+  round: number;
+  ids: [string, string];
+  wins: [number, number];
+  rw: number; // Runden zum Sieg
+  tm: number; // Sekunden bis zum Ende der Phase (Countdown/Rundenende), sonst 0
+  ld: number; // Runden-/Kampfgewinner (Index) oder -1
+  rm: string[]; // Spieler, die Revanche wollen
+  stats?: NetStats[];
 }
 
 export type ServerMessage =
-  | { t: 'room'; code: string; youId: string; hostId: string; phase: Phase; players: PlayerInfo[] }
-  | { t: 'state'; players: NetPlayerState[] }
+  | {
+      t: 'room';
+      code: string;
+      youId: string;
+      hostId: string;
+      phase: Phase;
+      players: PlayerInfo[];
+      practice: boolean;
+    }
+  | { t: 'state'; tk: number; players: NetPlayerState[]; ev: NetEvent[]; match: NetMatch | null }
   | { t: 'error'; message: string }
   | { t: 'info'; message: string };
 

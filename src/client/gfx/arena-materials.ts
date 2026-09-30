@@ -231,9 +231,11 @@ export function packedMaterial(o: PackedOpts): THREE.MeshStandardMaterial {
 }
 
 /** Stoff (Banner, Wimpel, Wappen): Atlas-Textur, Wind per Vertex-Animation. */
-export function clothMaterial(atlas: THREE.Texture): THREE.MeshStandardMaterial {
+export function clothMaterial(atlas: THREE.Texture, glow = 0): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({
     map: atlas,
+    emissiveMap: glow > 0 ? atlas : null,
+    emissive: new THREE.Color(glow, glow, glow),
     vertexColors: true,
     roughness: 0.88,
     metalness: 0,

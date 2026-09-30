@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DIGITS, digitBoneName, digitJoints } from './fighter-hand.js';
 
 // Skelett der Figur. Alle Positionen in Metern im Figurenraum (Ruheposition,
 // Fuesse bei y = 0, Blick nach -Z, rechte Koerperseite = +X). Ruhelage: Arme haengen.
@@ -27,7 +28,16 @@ export const BONE_NAMES = [
   'toeR',
 ] as const;
 
-export type BoneName = (typeof BONE_NAMES)[number];
+type Digit = 'thumb' | 'index' | 'middle' | 'ring' | 'pinky';
+export type FingerBoneName = `${Digit}${1 | 2 | 3}${'L' | 'R'}`;
+
+/** Fingerglieder: je Finger drei Knochen (Grund-, Mittel-, Endglied), Daumen ebenso. */
+export const FINGER_BONE_NAMES: FingerBoneName[] = [];
+for (const S of ['L', 'R'] as const) {
+  for (const d of DIGITS) for (let i = 0; i < 3; i++) FINGER_BONE_NAMES.push(digitBoneName(d.name, i, S) as FingerBoneName);
+}
+
+export type BoneName = (typeof BONE_NAMES)[number] | FingerBoneName;
 
 type P3 = readonly [number, number, number];
 
@@ -46,6 +56,18 @@ const R: Record<string, { parent: string | null; p: P3 }> = {
   footR: { parent: 'shinR', p: [0.095, 0.095, 0] },
   toeR: { parent: 'footR', p: [0.095, 0.03, -0.1] },
 };
+{
+  const H = R.handR!.p;
+  for (const d of DIGITS) {
+    const j = digitJoints(d);
+    for (let i = 0; i < 3; i++) {
+      R[digitBoneName(d.name, i, 'R')] = {
+        parent: i === 0 ? 'handR' : digitBoneName(d.name, i - 1, 'R'),
+        p: [H[0] + j[i]!.x, H[1] + j[i]!.y, H[2] + j[i]!.z],
+      };
+    }
+  }
+}
 for (const k of Object.keys(R)) {
   if (!k.endsWith('R')) continue;
   const v = R[k]!;
@@ -169,7 +191,7 @@ export function createRig(): Rig {
     index.set(name, list.length);
     list.push(b);
   };
-  for (const name of BONE_NAMES) {
+  for (const name of [...BONE_NAMES, ...FINGER_BONE_NAMES]) {
     const r = REST[name]!;
     make(name, r.parent, restPos(name));
   }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { box, extrude, loft, mirrorX, octa, sheet, smoothstep, sphere, tube, v3, xf, type Ring } from './fighter-geo.js';
 import { rigid, vblend, type FighterMeshBuilder, type PieceOpts, type WeightFn, type Weights } from './fighter-mesh.js';
+import { DIGITS, digitBoneName, digitJoints } from './fighter-hand.js';
 import { CHAINS, chainBoneName, restPos } from './fighter-rig.js';
 
 // Modell der Figur, komplett prozedural. Masse in Metern, Figurenraum (siehe fighter-rig.ts).
@@ -471,51 +472,194 @@ function buildBoots(c: Ctx): void {
 
 // ------------------------------------------------------------------ Faeuste
 
-function buildFist(c: Ctx, plated: boolean, group: ArmorGroup): void {
-  const H = restPos('handR');
-  const at = (x: number, y: number, z: number): [number, number, number] => [H.x + x, H.y + y, H.z + z];
-  const core = xf(box(0.052, 0.082, 0.09), { t: at(0.002, -0.068, 0) });
-  const leatherParts = [core];
-  const metalParts: THREE.BufferGeometry[] = [];
-  const fingerMat = plated ? metalParts : leatherParts;
-  for (const fz of [-0.0335, -0.011, 0.0115, 0.0335]) {
-    fingerMat.push(xf(box(0.036, 0.016, 0.0195), { t: at(0.005, -0.113, fz) }));
-    fingerMat.push(xf(box(0.016, 0.032, 0.0195), { t: at(-0.025, -0.096, fz) }));
-    fingerMat.push(xf(box(0.018, 0.02, 0.019), { t: at(0.024, -0.103, fz), r: [0, 0, 0.6] }));
+type HandStyle = 'plate' | 'mail' | 'leather';
+
+const _hq = new THREE.Quaternion();
+const _hm = new THREE.Matrix4();
+const _down = new THREE.Vector3(0, -1, 0);
+
+/** Feinere Textur (z. B. kleinere Kettenringe auf den Fingern). */
+function scaleUV(g: THREE.BufferGeometry, k: number): THREE.BufferGeometry {
+  const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
+  if (uv) {
+    const a = uv.array as Float32Array;
+    for (let i = 0; i < a.length; i++) a[i]! *= k;
   }
-  const thumb = tube([v3(...at(0.016, -0.035, -0.036)), v3(...at(-0.004, -0.056, -0.053)), v3(...at(-0.026, -0.072, -0.05))], [
-    [0.011, 0.011],
-    [0.01, 0.01],
-    [0.009, 0.009],
-  ], { segs: 5, capEnd: true, capStart: true });
-  fingerMat.push(thumb);
-  if (plated) {
-    metalParts.push(xf(box(0.012, 0.036, 0.094), { t: at(0.031, -0.044, 0), r: [0, 0, -0.08] }));
-    metalParts.push(xf(box(0.012, 0.034, 0.096), { t: at(0.033, -0.077, 0), r: [0, 0, 0.1] }));
+  return g;
+}
+
+/** Geometrie vom lokalen Rahmen (Glied zeigt nach -Y, Beginn im Ursprung) an die Fingerlage bringen. */
+function placeDigit(g: THREE.BufferGeometry, A: THREE.Vector3, dir: THREE.Vector3): THREE.BufferGeometry {
+  _hq.setFromUnitVectors(_down, dir);
+  _hm.makeRotationFromQuaternion(_hq).setPosition(A);
+  g.applyMatrix4(_hm);
+  return g;
+}
+
+/**
+ * Haende mit einzelnen Fingern (je drei Glieder, eigene Knochen). Gebaut fuer die rechte Hand
+ * in Ruhelage (gestreckt), die linke ist gespiegelt. Die Pose kommt aus den Fingerknochen.
+ *  plate: Plattenhandschuh (Lederinnenseite, Stahlschuppen auf jedem Glied, Knoechelgrat)
+ *  mail: Lederhandschuh mit Kettengeflecht auf Handruecken und Fingern
+ *  leather: einfacher Lederhandschuh
+ */
+function buildHands(c: Ctx, style: HandStyle, group: ArmorGroup): void {
+  const H = restPos('handR');
+  const leatherCol = style === 'plate' ? C.leatherDark : style === 'mail' ? C.leather : C.leatherTan;
+  const cx = H.x;
+  const cy = H.y;
+  const hz = H.z;
+  const leather: THREE.BufferGeometry[] = [];
+  const steel: THREE.BufferGeometry[] = [];
+  const chain: THREE.BufferGeometry[] = [];
+  // Handteller
+  leather.push(
+    loft(
+      [
+        { y: cy + 0.012, rx: 0.017, rz: 0.03, cx: cx + 0.001, cz: hz - 0.001, n: 2.4 },
+        { y: cy - 0.022, rx: 0.0158, rz: 0.037, cx, cz: hz - 0.0015, n: 2.6 },
+        { y: cy - 0.06, rx: 0.0148, rz: 0.041, cx, cz: hz - 0.001, n: 2.8 },
+        { y: cy - 0.083, rx: 0.0128, rz: 0.04, cx: cx - 0.001, cz: hz - 0.0005, n: 2.8 },
+        { y: cy - 0.094, rx: 0.009, rz: 0.033, cx: cx - 0.001, cz: hz, n: 2.6 },
+      ],
+      { segs: 12, capBottom: true },
+    ),
+  );
+  // Handruecken
+  const backLames: [number, number][] = [
+    [cy + 0.008, cy - 0.026],
+    [cy - 0.021, cy - 0.054],
+    [cy - 0.049, cy - 0.082],
+  ];
+  const backArc: [number, number] = [Math.PI / 2 - 1.25, Math.PI / 2 + 1.25];
+  if (style === 'plate') {
+    backLames.forEach(([y0, y1], i) => {
+      steel.push(
+        loft(
+          [
+            { y: y1, rx: 0.0192 - i * 0.001, rz: 0.0445, cx, cz: hz - 0.001, n: 2.6 },
+            { y: y0, rx: 0.0185 - i * 0.001, rz: 0.041 + i * 0.001, cx, cz: hz - 0.001, n: 2.6 },
+          ],
+          { segs: 8, arc: backArc, thickness: 0.003 },
+        ),
+      );
+    });
+    // Knoechelgrat
+    steel.push(
+      tube(
+        [v3(cx + 0.0105, cy - 0.082, hz - 0.038), v3(cx + 0.012, cy - 0.087, hz - 0.012), v3(cx + 0.012, cy - 0.084, hz + 0.01), v3(cx + 0.0105, cy - 0.076, hz + 0.031)],
+        [
+          [0.0055, 0.0055],
+          [0.006, 0.006],
+          [0.006, 0.006],
+          [0.0055, 0.0055],
+        ],
+        { segs: 5, capStart: true, capEnd: true, side: v3(1, 0, 0) },
+      ),
+    );
     // Stulpe (Sanduhr-Form)
-    metalParts.push(
+    steel.push(
       loft(
         [
-          { y: H.y + 0.03, rx: 0.047, rz: 0.049, cx: H.x, cz: H.z },
-          { y: H.y - 0.005, rx: 0.054, rz: 0.057, cx: H.x, cz: H.z },
-          { y: H.y - 0.032, rx: 0.064, rz: 0.066, cx: H.x + 0.004, cz: H.z },
+          { y: cy + 0.03, rx: 0.047, rz: 0.049, cx, cz: hz },
+          { y: cy - 0.005, rx: 0.054, rz: 0.057, cx, cz: hz },
+          { y: cy - 0.03, rx: 0.062, rz: 0.064, cx: cx + 0.004, cz: hz },
         ],
         { segs: 12, thickness: 0.004 },
       ),
     );
-    both(c, mergeList(metalParts), (S) => ({ ...METAL, color: C.steel, group, bone: 'hand' + S }));
   } else {
-    leatherParts.push(
+    if (style === 'mail') {
+      chain.push(
+        scaleUV(
+          loft(
+            [
+              { y: cy - 0.082, rx: 0.0158, rz: 0.043, cx, cz: hz - 0.001, n: 2.6 },
+              { y: cy + 0.02, rx: 0.019, rz: 0.036, cx, cz: hz - 0.001, n: 2.4 },
+            ],
+            { segs: 8, arc: backArc, thickness: 0.002 },
+          ),
+          1.8,
+        ),
+      );
+    }
+    leather.push(
       loft(
         [
-          { y: H.y + 0.035, rx: 0.046, rz: 0.048, cx: H.x, cz: H.z },
-          { y: H.y - 0.02, rx: 0.052, rz: 0.054, cx: H.x + 0.002, cz: H.z },
+          { y: cy + 0.035, rx: 0.046, rz: 0.048, cx, cz: hz },
+          { y: cy - 0.018, rx: 0.051, rz: 0.053, cx: cx + 0.002, cz: hz },
         ],
         { segs: 10, thickness: 0.004 },
       ),
     );
   }
-  both(c, mergeList(leatherParts), (S) => ({ ...LEATHER, color: plated ? C.leatherDark : C.leatherTan, group, bone: 'hand' + S }));
+  const handOpts = (S: Side, mat: 'leather' | 'metal' | 'chain', color: number): PieceOpts =>
+    mat === 'leather'
+      ? { ...LEATHER, color, group, bone: 'hand' + S }
+      : mat === 'metal'
+        ? { ...METAL, color, group, bone: 'hand' + S }
+        : { ...CHAIN, color, group, bone: 'hand' + S };
+  both(c, mergeList(leather.splice(0)), (S) => handOpts(S, 'leather', leatherCol));
+  if (steel.length) both(c, mergeList(steel.splice(0)), (S) => handOpts(S, 'metal', C.steel));
+  if (chain.length) both(c, mergeList(chain.splice(0)), (S) => handOpts(S, 'chain', C.chain));
+
+  // Finger und Daumen: je Glied ein Kern (Leder/Kette) und bei Platte eine Stahlschuppe auf dem Ruecken
+  for (const d of DIGITS) {
+    const J = digitJoints(d).map((p) => p.add(H));
+    const dir = new THREE.Vector3(...d.dir);
+    const thumb = d.name === 'thumb';
+    for (let sgi = 0; sgi < 3; sgi++) {
+      const len = d.len[sgi]!;
+      const tip = sgi === 2;
+      const hw = d.hw * (1 - sgi * 0.06);
+      const ht = d.ht * (1 - sgi * 0.07);
+      const pts = [v3(0, 0.003, 0), v3(0, -len * 0.5, 0), v3(0, -len - (tip ? 0 : 0.002), 0)];
+      const radii: [number, number][] = [
+        [hw * 0.93, ht * 0.92],
+        [hw, ht],
+        [hw * (tip ? 0.85 : 0.94), ht * (tip ? 0.8 : 0.92)],
+      ];
+      if (tip) {
+        pts.push(v3(0, -len - 0.004, 0));
+        radii.push([hw * 0.55, ht * 0.5]);
+      }
+      if (thumb && sgi === 0) {
+        // Daumenballen
+        radii[0] = [hw * 1.3, ht * 1.25];
+        radii[1] = [hw * 1.12, ht * 1.08];
+      }
+      const core = placeDigit(tube(pts, radii, { segs: 6, n: 2.3, capEnd: tip, side: v3(0, 0, 1) }), J[sgi]!, dir);
+      const boneName = digitBoneName(d.name, sgi, 'R');
+      const bn = (S: Side) => boneName.slice(0, -1) + S;
+      const coreMat = style === 'mail' && !tip ? 'chain' : 'leather';
+      if (coreMat === 'chain') scaleUV(core, 2.6);
+      both(c, core, (S) =>
+        coreMat === 'chain' ? { ...CHAIN, color: C.chain, group, bone: bn(S) } : { ...LEATHER, color: leatherCol, group, bone: bn(S) },
+      );
+      if (style === 'plate') {
+        const y0 = -0.001;
+        const y1 = -len + (tip ? 0.002 : -0.003);
+        const plate = loft(
+          [
+            { y: y1, rx: ht + 0.0026, rz: hw + 0.0018 },
+            { y: (y0 + y1) / 2, rx: ht + 0.0027, rz: hw + 0.0019 },
+            { y: y0, rx: ht + 0.0019, rz: hw + 0.0012 },
+          ],
+          {
+            segs: 5,
+            arc: [Math.PI / 2 - 1.05, Math.PI / 2 + 1.05],
+            thickness: 0.002,
+            deform: tip
+              ? (p, _th, i) => {
+                  if (i === 0) p.x -= 0.0015; // Fingerspitze gerundet nach innen
+                }
+              : undefined,
+          },
+        );
+        both(c, placeDigit(plate, J[sgi]!, dir), (S) => ({ ...METAL, color: sgi === 1 ? C.steelLame : C.steel, group, bone: bn(S) }));
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------------ Schwere Ruestung
@@ -1212,7 +1356,7 @@ function buildArmPlates(c: Ctx): void {
   both(c, mergeList(metal), (S) => ({ ...METAL, color: C.steel, group: 'arms', bone: 'forearm' + S }));
   both(c, mergeList(brass), (S) => ({ ...BRASS, color: C.brass, group: 'arms', weights: vblend('forearm' + S, 'upperArm' + S, 1.1, 1.19) }));
 
-  buildFist(c, true, 'arms');
+  buildHands(c, 'plate', 'arms');
 }
 
 function buildLegPlates(c: Ctx): void {
@@ -1766,7 +1910,7 @@ export function buildFighterModel(b: FighterMeshBuilder, accentHex: number, tier
     buildMailHauberk(c, true);
     buildBelts(c);
     buildSimpleCouters(c);
-    buildFist(c, false, 'arms');
+    buildHands(c, 'mail', 'arms');
     buildTabard(c, true);
     buildCape(c);
   } else {
@@ -1774,7 +1918,7 @@ export function buildFighterModel(b: FighterMeshBuilder, accentHex: number, tier
     buildGambesonSleeves(c);
     buildLeatherBracers(c);
     buildBelts(c);
-    buildFist(c, false, 'arms');
+    buildHands(c, 'leather', 'arms');
     buildTabard(c, true);
   }
 }

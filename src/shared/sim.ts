@@ -1,6 +1,9 @@
-// Gemeinsame Bewegungs-Simulation. Wird vom Server (verbindlich) und vom
+// Gemeinsame Simulation (Bewegung + Kampf-Automat). Wird vom Server (verbindlich) und vom
 // Client (Vorhersage, damit sich die eigene Figur sofort anfuehlt) benutzt.
 // WICHTIG: Beide muessen exakt dasselbe rechnen, sonst "ruckelt" die Figur.
+
+import { stepCombat } from './combat.js';
+import { Act, HP_MAX } from './weapons.js';
 
 export const TICK_RATE = 30;
 export const TICK = 1 / TICK_RATE;
@@ -8,7 +11,7 @@ export const TICK = 1 / TICK_RATE;
 export const ARENA_RADIUS = 12;
 export const PLAYER_RADIUS = 0.45;
 
-export const WALK_SPEED = 2.4; // Meter pro Sekunde, bewusst langsam
+export const WALK_SPEED = 2.4; // Meter pro Sekunde, bewusst langsam (= Tempo fuer schwere Ruestung)
 export const SPRINT_SPEED = 4.2;
 export const BACKWARD_FACTOR = 0.6;
 export const STRAFE_FACTOR = 0.8;
@@ -33,6 +36,25 @@ export interface SimState {
   stamina: number;
   exhausted: boolean;
   regenDelay: number;
+
+  // ---- Kampf ----
+  act: number; // Act.*
+  dir: number; // Richtung des Angriffs/Blocks (0 oben, 1 links, 2 rechts)
+  actT: number; // Ticks in der aktuellen Aktion
+  hp: number; // nur der Server kennt den echten Wert; der Client bekommt nur den eigenen
+  staggerT: number;
+  dazeT: number; // Benommenheit (Kopftreffer)
+  armT: number; // Armtreffer: langsameres Ausholen
+  legT: number; // Beintreffer: langsamer laufen
+  down: boolean; // "Letzte Chance": am Boden
+  downT: number;
+  revived: boolean; // Letzte Chance schon genutzt
+  hitDone: boolean; // aktueller Schlag hat schon getroffen oder wurde geblockt
+  prevAtk: boolean; // Tasten-Zustand des letzten Ticks (fuer Flanken)
+  prevBlk: boolean;
+  weapon: number;
+  armor: number;
+
   // Nur fuer Animation, nicht verbindlich:
   vx: number;
   vz: number;
@@ -44,6 +66,9 @@ export interface MoveInput {
   right: number; // -1 (links) .. 1 (rechts)
   yaw: number;
   sprint: boolean;
+  atk?: boolean; // linke Maustaste gehalten
+  blk?: boolean; // rechte Maustaste gehalten
+  dir?: number; // gewaehlte Richtung 0 oben / 1 links / 2 rechts
 }
 
 export function newSimState(x: number, z: number, yaw: number): SimState {
@@ -54,6 +79,22 @@ export function newSimState(x: number, z: number, yaw: number): SimState {
     stamina: STAMINA_MAX,
     exhausted: false,
     regenDelay: 0,
+    act: Act.IDLE,
+    dir: 0,
+    actT: 0,
+    hp: HP_MAX,
+    staggerT: 0,
+    dazeT: 0,
+    armT: 0,
+    legT: 0,
+    down: false,
+    downT: 0,
+    revived: false,
+    hitDone: true,
+    prevAtk: false,
+    prevBlk: false,
+    weapon: 0,
+    armor: 0,
     vx: 0,
     vz: 0,
     sprinting: false,
@@ -75,16 +116,30 @@ function num(v: unknown, fallback = 0): number {
 /** Macht aus beliebigen (evtl. manipulierten) Eingaben eine gueltige Eingabe. */
 export function sanitizeInput(raw: Partial<MoveInput> | null | undefined): MoveInput {
   const r = raw ?? {};
+  const dir = r.dir === 1 || r.dir === 2 ? r.dir : 0;
   return {
     fwd: clamp(num(r.fwd), -1, 1),
     right: clamp(num(r.right), -1, 1),
     yaw: num(r.yaw),
     sprint: r.sprint === true,
+    atk: r.atk === true,
+    blk: r.blk === true,
+    dir,
   };
 }
 
-/** Ein Simulationsschritt (1/30 Sekunde). `other` ist die Position des Gegners. */
-export function stepPlayer(p: SimState, input: MoveInput, other?: { x: number; z: number }): void {
+/**
+ * Ein Simulationsschritt (1/30 Sekunde). `other` ist die Position des Gegners.
+ * `canAct`: false = Kaempfen gerade nicht erlaubt (Countdown, Rundenende).
+ */
+export function stepPlayer(
+  p: SimState,
+  input: MoveInput,
+  other?: { x: number; z: number },
+  canAct = true,
+): void {
+  const fx = stepCombat(p, input, canAct);
+
   let fwd = input.fwd;
   let right = input.right;
   const len = Math.hypot(fwd, right);
@@ -92,23 +147,24 @@ export function stepPlayer(p: SimState, input: MoveInput, other?: { x: number; z
     fwd /= len;
     right /= len;
   }
-  const moving = len > 0.01;
+  const moving = len > 0.01 && fx.moveMult > 0;
 
-  const sprinting = input.sprint && fwd > 0.3 && !p.exhausted && p.stamina > 0;
+  const sprinting = input.sprint && fwd > 0.3 && !p.exhausted && p.stamina > 0 && fx.canSprint;
   const speed = sprinting ? SPRINT_SPEED : WALK_SPEED;
 
   let factor = 1;
   if (fwd < -0.1) factor = BACKWARD_FACTOR;
   else if (fwd < 0.1 && Math.abs(right) > 0.1) factor = STRAFE_FACTOR;
+  factor *= fx.moveMult;
 
   const sin = Math.sin(input.yaw);
   const cos = Math.cos(input.yaw);
-  const fx = -sin;
+  const fx_ = -sin;
   const fz = -cos;
   const rx = cos;
   const rz = -sin;
 
-  p.vx = (fx * fwd + rx * right) * speed * factor;
+  p.vx = (fx_ * fwd + rx * right) * speed * factor;
   p.vz = (fz * fwd + rz * right) * speed * factor;
   p.x += p.vx * TICK;
   p.z += p.vz * TICK;
@@ -155,8 +211,8 @@ export function stepPlayer(p: SimState, input: MoveInput, other?: { x: number; z
     }
   } else if (p.regenDelay > 0) {
     p.regenDelay = Math.max(0, p.regenDelay - TICK);
-  } else {
-    const regen = STAMINA_REGEN * (moving ? STAMINA_REGEN_MOVING_FACTOR : 1);
+  } else if (fx.regenScale > 0) {
+    const regen = STAMINA_REGEN * (moving ? STAMINA_REGEN_MOVING_FACTOR : 1) * fx.regenScale;
     p.stamina = Math.min(STAMINA_MAX, p.stamina + regen * TICK);
     if (p.exhausted && p.stamina >= EXHAUST_RECOVER) p.exhausted = false;
   }

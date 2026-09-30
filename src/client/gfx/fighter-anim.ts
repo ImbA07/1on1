@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DIGITS, digitBoneName, gripPose, HandRig, LOOSE_FIST, RELAXED, type HandPose } from './fighter-hand.js';
 import { ANKLE_H, SHIN_LEN, THIGH_LEN, type Rig } from './fighter-rig.js';
 
 // Prozedurale Animation: Kampfhaltung, Gehen/Rennen in alle Richtungen mit
@@ -67,9 +68,9 @@ function arm(p: Partial<ArmPose>): ArmPose {
 }
 
 // Posen (rechte Seite = Schwertarm). Linke Werte sind fuer den linken Arm (Vorzeichen schon gespiegelt).
-const GUARD_R = arm({ ux: 0.42, uz: 0.18, uy: 0.5, fx: 1.12, fy: -0.25, hx: -0.42, hz: 0.1 });
-const GUARD_L = arm({ ux: 0.32, uz: -0.2, uy: -0.45, fx: 1.25, fy: 0.3, hx: 0.05 });
-const RUN_R = arm({ ux: 0.05, uz: 0.16, uy: 0.25, fx: 1.35, fy: -0.2, hx: -0.55, hz: 0.1 });
+const GUARD_R = arm({ ux: 0.42, uz: 0.18, uy: 0.5, fx: 1.12, fy: -0.25, hx: -0.57, hz: 0.1 });
+const GUARD_L = arm({ ux: 0.32, uz: -0.2, uy: -0.45, fx: 1.25, fy: 0.75, hx: 0.3, hz: -0.15 });
+const RUN_R = arm({ ux: 0.05, uz: 0.16, uy: 0.25, fx: 1.35, fy: -0.2, hx: -0.7, hz: 0.1 });
 const RUN_L = arm({ ux: -0.05, uz: -0.14, uy: -0.2, fx: 1.45, fy: 0.2 });
 
 const _q1 = new THREE.Quaternion();
@@ -153,6 +154,11 @@ export class FighterAnimator {
   private readonly armR: ArmBones;
   private readonly legL: LegBones;
   private readonly legR: LegBones;
+  private readonly handRigL: HandRig;
+  private readonly handRigR: HandRig;
+  private readonly grip: HandPose;
+  private readonly fingerLag = new Spring(120, 0.4);
+  private prevSwingL = 0;
 
   constructor(rig: Rig) {
     this.B = rig.bones;
@@ -176,6 +182,10 @@ export class FighterAnimator {
     this.armR = arm('R', 0);
     this.legL = leg('L', -1);
     this.legR = leg('R', 1);
+    const digits = (S: 'L' | 'R') => DIGITS.map((d) => [0, 1, 2].map((i) => rig.bones[digitBoneName(d.name, i, S)]!));
+    this.handRigL = new HandRig(digits('L'), 'L');
+    this.handRigR = new HandRig(digits('R'), 'R');
+    this.grip = gripPose();
   }
 
   /** Blickrichtung neu uebernehmen (kein Nachziehen der Beine), z. B. nach dem Aufstellen. */
@@ -359,6 +369,15 @@ export class FighterAnimator {
     const tip = this.swordSpring.update(walkBob * 6 + runBob * 3, dt);
     this.setArm(this.armR, GUARD_R, RUN_R, run, swingR, tip, br, 1);
     this.setArm(this.armL, GUARD_L, RUN_L, run, swingL, 0, br, -1);
+
+    // ---------------- Finger ----------------
+    // Rechts: Schwertgriff, im Stand minimal lockerer, beim Rennen fester.
+    this.handRigR.apply(this.grip, this.grip, 0, -0.025 + 0.012 * br + 0.03 * run, 0);
+    // Links: locker und halb offen, gibt dem Armschwung leicht nach; beim Rennen lockere Faust.
+    const swingVel = (swingL - this.prevSwingL) / dt;
+    this.prevSwingL = swingL;
+    const lag = this.fingerLag.update(clamp(-swingVel * 0.06, -0.14, 0.14), dt);
+    this.handRigL.apply(RELAXED, LOOSE_FIST, run * 0.85, 0.035 * Math.sin(this.breath + 0.8) + lag, 0.02 * br);
 
     // ---------------- Beine (IK) ----------------
     this.solveLeg(this.legL, this.feet[0]!, hips);

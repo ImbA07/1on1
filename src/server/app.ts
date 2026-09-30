@@ -19,7 +19,9 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 };
 
-const BROADCAST_INTERVAL_MS = 50; // 20 Mal pro Sekunde
+// Der Spielschritt wird alle paar Millisekunden angestossen; rooms.advance() rechnet dann so viele
+// Schritte (30 pro Sekunde), wie an Zeit vergangen ist. So bleibt das Tempo auch bei ungenauen Timern exakt.
+const TICK_POLL_MS = 4;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
 export interface GameServerOptions {
@@ -127,7 +129,7 @@ export function createGameServer(opts: GameServerOptions): Promise<GameServer> {
     ws.on('error', () => rooms.disconnect(ws));
   });
 
-  const broadcastTimer = setInterval(() => rooms.broadcastStates(), BROADCAST_INTERVAL_MS);
+  const broadcastTimer = setInterval(() => rooms.advance(performance.now()), TICK_POLL_MS);
   const cleanupTimer = setInterval(() => rooms.cleanup(), 10_000);
   // Tote Verbindungen erkennen (und Hosting-Proxys wach halten)
   const heartbeatTimer = setInterval(() => {

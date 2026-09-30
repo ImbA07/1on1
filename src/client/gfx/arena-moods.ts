@@ -1,4 +1,6 @@
-// Stimmungen der Arena. 'overcast' ist die Hauptstimmung, die anderen sind schlanke Varianten.
+import type { GroundFogParams } from './arena-groundfog.js';
+
+// Stimmungen der Arena. 'overcast' ist die Hauptstimmung (duester, mit Bodennebel), die anderen sind schlanke Varianten.
 
 export type ArenaMood = 'overcast' | 'goldenHour' | 'night' | 'fog';
 export const ARENA_MOODS: ArenaMood[] = ['overcast', 'goldenHour', 'night', 'fog'];
@@ -36,37 +38,43 @@ export interface MoodDef {
   dust: number; // Sichtbarkeit Staubteilchen
   rain: number; // 0 = trocken, 1 = Nieselregen
   dustColor: number;
+  groundFog?: GroundFogParams; // flache Nebelschicht am Boden
+  clothGlow?: number; // Stoffe leuchten etwas selbst (bunte Akzente im Grau)
+  flameGlow?: number; // Leuchthof der Flammen
 }
 
 export const MOODS: Record<ArenaMood, MoodDef> = {
   overcast: {
-    skyTop: 0x6f7f8e,
-    skyHorizon: 0xc3c6c3,
-    skyGround: 0x575048,
-    cloudLit: 0xd6d7d4,
-    cloudDark: 0x7d8288,
-    cloudCover: 0.62,
-    cloudSpeed: 0.006,
-    sunGlow: 0.18,
+    skyTop: 0x545e68,
+    skyHorizon: 0x969c9d,
+    skyGround: 0x4a4540,
+    cloudLit: 0xa3a8aa,
+    cloudDark: 0x4a5056,
+    cloudCover: 0.86,
+    cloudSpeed: 0.005,
+    sunGlow: 0.06,
     sunDisk: 0.0,
     stars: 0,
-    sunColor: 0xfff1de,
-    sunIntensity: 1.85,
-    sunElevation: 52,
+    sunColor: 0xdde5ee,
+    sunIntensity: 0.85,
+    sunElevation: 55,
     sunAzimuth: 38,
-    hemiSky: 0xc9d2da,
-    hemiGround: 0x5a5046,
-    hemiIntensity: 0.5,
-    envIntensity: 0.65,
-    fogColor: 0xb2b7b8,
-    fogDensity: 0.0037,
-    fireIntensity: 5,
-    flameScale: 1,
-    windowGlow: 0.0,
-    wetness: 0.55,
-    dust: 0.35,
-    dustColor: 0xe8e4da,
+    hemiSky: 0xa4afba,
+    hemiGround: 0x46403a,
+    hemiIntensity: 0.56,
+    envIntensity: 0.58,
+    fogColor: 0x8a9194,
+    fogDensity: 0.0078,
+    fireIntensity: 7,
+    flameScale: 1.05,
+    windowGlow: 0.06,
+    wetness: 0.65,
+    dust: 0.25,
+    dustColor: 0xc8ccd0,
     rain: 0,
+    groundFog: { density: 0.2, height: 0.85, max: 0.8, tint: 1.07 },
+    clothGlow: 0.2,
+    flameGlow: 0.6,
   },
   goldenHour: {
     skyTop: 0x4a6a96,

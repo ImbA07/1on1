@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import { buildArena, CAMERA_MAX_RADIUS, type Arena } from './arena.js';
 import { Fighter, angleLerp } from './fighter.js';
 import type { Net } from './net.js';
-import type { NetPlayerState, PlayerInfo } from '../shared/protocol.js';
+import type { NetEvent, NetMatch, PlayerInfo, ServerMessage } from '../shared/protocol.js';
+import { applyNet } from '../shared/netstate.js';
 import { SPAWNS, TICK, newSimState, stepPlayer, type MoveInput, type SimState } from '../shared/sim.js';
+import { weaponOf, windupNeed } from '../shared/combat.js';
+import { Act, HP_MAX } from '../shared/weapons.js';
 
 const FIGHTER_COLORS = [0xb3322b, 0x2b6cb3];
 const MOUSE_SENSITIVITY = 0.0022;
@@ -12,10 +15,32 @@ const SHOULDER_OFFSET = 0.65;
 const CAMERA_DISTANCE = 3.9;
 const CAMERA_HEIGHT = 1.75;
 
+/** Alles, was die Anzeige im Kampf braucht (kein Lebensbalken: nur Zustand und Effekte). */
+export interface CombatView {
+  act: number;
+  dir: number; // aktuelle Richtung des eigenen Angriffs/Blocks
+  actT: number;
+  need: number; // Ticks bis zum fruehesten Schlag
+  atkHeld: boolean;
+  blkHeld: boolean;
+  selDir: number; // per Maus gewaehlte Richtung
+  hpFrac: number; // 0..1, nur fuer Bildschirm-Effekte
+  down: boolean;
+  downT: number;
+  oppAct: number;
+  oppDir: number; // Richtung des gegnerischen Angriffs (aus dessen Sicht)
+  oppDown: boolean;
+  oppDownT: number;
+  canAct: boolean;
+}
+
 export interface HudHooks {
   onStamina(value: number, exhausted: boolean): void;
   onLockOn(active: boolean): void;
   onPointerLock(locked: boolean): void;
+  onCombat(view: CombatView): void;
+  onEvents(events: NetEvent[], youId: string): void;
+  onMatch(match: NetMatch, youId: string): void;
 }
 
 interface Snapshot {
@@ -33,6 +58,7 @@ interface SelfState {
   renderX: number;
   renderZ: number;
   pending: Array<{ seq: number; input: MoveInput }>;
+  spawnYaw: number;
 }
 
 interface OpponentState {
@@ -45,6 +71,10 @@ interface OpponentState {
   vx: number;
   vz: number;
   sprinting: boolean;
+  act: number;
+  dir: number;
+  down: boolean;
+  downT: number;
 }
 
 export class Game {
@@ -67,6 +97,18 @@ export class Game {
   // Laeuft ueber alle Runden weiter. So kann eine verspaetete Eingabe aus der
   // Vorrunde niemals neue Eingaben blockieren (der Server nimmt nur hoehere Nummern an).
   private seq = 0;
+
+  // Kampf-Eingabe: linke Maustaste = Angriff, rechte = Block, Maus bewegen = Richtung waehlen
+  private atkHeld = false;
+  private blkHeld = false;
+  private dirX = 0;
+  private dirY = 0;
+  private selDir = 0;
+  private canAct = false;
+  private matchKey = '';
+  private matchRound = 0;
+  private shake = 0;
+
   private lastFrame = performance.now();
   private menuAngle = 0.6;
   private elapsed = 0;
@@ -118,6 +160,7 @@ export class Game {
       renderX: spawn.x,
       renderZ: spawn.z,
       pending: [],
+      spawnYaw: spawn.yaw,
     };
 
     const oppIndex = players.findIndex((p) => p.id !== youId);
@@ -135,6 +178,10 @@ export class Game {
         vx: 0,
         vz: 0,
         sprinting: false,
+        act: Act.IDLE,
+        dir: 0,
+        down: false,
+        downT: 0,
       };
       oppFighter.setPosition(oppSpawn.x, oppSpawn.z, oppSpawn.yaw);
     }
@@ -143,6 +190,13 @@ export class Game {
     this.lookPitch = -0.12;
     this.lockOn = false;
     this.acc = 0;
+    this.canAct = false;
+    this.matchKey = '';
+    this.matchRound = 0;
+    this.atkHeld = false;
+    this.blkHeld = false;
+    this.selDir = 0;
+    this.shake = 0;
     this.hud.onLockOn(false);
     this.hud.onStamina(100, false);
   }
@@ -154,6 +208,8 @@ export class Game {
     this.opp = null;
     this.lockOn = false;
     this.keys.clear();
+    this.atkHeld = false;
+    this.blkHeld = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
@@ -170,32 +226,54 @@ export class Game {
 
   // ---------------------------------------------------------------- Netzwerk
 
-  onState(players: NetPlayerState[]): void {
+  onState(msg: Extract<ServerMessage, { t: 'state' }>): void {
     if (this.mode !== 'arena' || !this.self) return;
+    const players = msg.players;
+    const youId = this.self.id;
+
+    // Kampf-Phase (Countdown/Kampf/Rundenende) und Ereignisse
+    this.canAct = msg.match?.ph === 'fight';
+    if (msg.match) {
+      const m = msg.match;
+      const key = `${m.ph}|${m.round}|${m.wins.join(',')}|${m.tm}|${m.ld}|${m.rm.join(',')}|${m.stats ? 1 : 0}`;
+      if (key !== this.matchKey) {
+        this.matchKey = key;
+        this.hud.onMatch(m, youId);
+      }
+      if (m.round !== this.matchRound) {
+        // Neue Runde: Kamera wieder zum Gegner ausrichten
+        this.matchRound = m.round;
+        this.camYaw = this.self.spawnYaw;
+        this.lookPitch = -0.12;
+        this.lockOn = false;
+        this.hud.onLockOn(false);
+      }
+    }
+    if (msg.ev.length) {
+      for (const e of msg.ev) if ((e.k === 'hit' && e.d === youId) || (e.k === 'break' && e.d === youId)) this.shake = 1;
+      this.hud.onEvents(msg.ev, youId);
+    }
 
     // Zuerst den Gegner aktualisieren: Das Neuabspielen unten rechnet mit dessen neuester Position
-    const other = players.find((p) => p.id !== this.self!.id);
+    const other = players.find((p) => p.id !== youId);
     if (other && this.opp) {
       this.opp.latest = { x: other.x, z: other.z };
       this.opp.sprinting = other.sp;
+      this.opp.act = other.ac;
+      this.opp.dir = other.d;
+      this.opp.down = other.dn;
+      this.opp.downT = other.dt;
       this.opp.snaps.push({ t: performance.now(), x: other.x, z: other.z, yaw: other.yaw, sp: other.sp });
       if (this.opp.snaps.length > 30) this.opp.snaps.shift();
     }
 
-    const me = players.find((p) => p.id === this.self!.id);
+    const me = players.find((p) => p.id === youId);
     if (me) {
       const s = this.self;
-      const p = s.pred;
-      p.x = me.x;
-      p.z = me.z;
-      p.yaw = me.yaw;
-      p.stamina = me.st;
-      p.exhausted = me.ex;
-      p.regenDelay = me.rd;
-      p.sprinting = me.sp;
+      applyNet(s.pred, me);
       // Vom Server schon verarbeitete Eingaben verwerfen, die restlichen erneut abspielen
       while (s.pending.length && s.pending[0]!.seq <= me.ack) s.pending.shift();
-      for (const item of s.pending) stepPlayer(p, item.input, this.opp?.latest);
+      for (const item of s.pending) stepPlayer(s.pred, item.input, this.opp?.latest, this.canAct);
     }
   }
 
@@ -210,10 +288,20 @@ export class Game {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.atkHeld = false;
+      this.blkHeld = false;
+    });
 
     window.addEventListener('mousemove', (e) => {
       if (this.mode !== 'arena' || !this.pointerLocked) return;
+      if (this.atkHeld || this.blkHeld) {
+        // Waehrend Angriff/Block waehlt die Maus die Richtung. Die Kamera bleibt stehen
+        // (mit Fokus auf den Gegner folgt sie ihm trotzdem).
+        this.pickDirection(e.movementX, e.movementY);
+        return;
+      }
       if (!this.lockOn) this.camYaw -= e.movementX * MOUSE_SENSITIVITY;
       this.lookPitch = clamp(this.lookPitch - e.movementY * MOUSE_SENSITIVITY, -0.85, 0.45);
     });
@@ -223,15 +311,34 @@ export class Game {
       if (e.button === 1) {
         e.preventDefault();
         this.toggleLockOn();
-      } else if (e.button === 0 && !this.pointerLocked) {
-        this.requestPointerLock();
+      } else if (!this.pointerLocked) {
+        if (e.button === 0) this.requestPointerLock();
+      } else if (e.button === 0) {
+        e.preventDefault();
+        this.atkHeld = true;
+        this.dirX = 0;
+        this.dirY = 0;
+      } else if (e.button === 2) {
+        e.preventDefault();
+        this.blkHeld = true;
+        this.dirX = 0;
+        this.dirY = 0;
       }
     });
-    // Mausrad-Klick soll nicht das Auto-Scrollen des Browsers starten
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.atkHeld = false;
+      if (e.button === 2) this.blkHeld = false;
+    });
+    // Rechtsklick soll kein Browser-Menue oeffnen, Mausrad-Klick nicht das Auto-Scrollen starten
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     this.canvas.addEventListener('auxclick', (e) => e.preventDefault());
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.canvas;
+      if (!this.pointerLocked) {
+        this.atkHeld = false;
+        this.blkHeld = false;
+      }
       this.hud.onPointerLock(this.pointerLocked);
     });
   }
@@ -247,12 +354,32 @@ export class Game {
     this.hud.onLockOn(this.lockOn);
   }
 
+  /**
+   * Richtung waehlen: Die Mausbewegung waehrend Angriff/Block bildet einen kleinen Vektor.
+   * Hoch = oben, links = links, rechts = rechts. Nach unten zaehlt nicht.
+   */
+  private pickDirection(mx: number, my: number): void {
+    const R = 60;
+    this.dirX += mx;
+    this.dirY += my;
+    const len = Math.hypot(this.dirX, this.dirY);
+    if (len > R) {
+      this.dirX = (this.dirX / len) * R;
+      this.dirY = (this.dirY / len) * R;
+    }
+    const T = 20;
+    const ax = Math.abs(this.dirX);
+    const ay = Math.abs(this.dirY);
+    if (this.dirY < -T && ay >= ax * 0.7) this.selDir = 0;
+    else if (ax > T && ax > ay * 0.7) this.selDir = this.dirX < 0 ? 1 : 2;
+  }
+
   private readInput(): MoveInput {
     const k = this.keys;
     const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
     const right = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
-    return { fwd, right, yaw: this.camYaw, sprint };
+    return { fwd, right, yaw: this.camYaw, sprint, atk: this.atkHeld, blk: this.blkHeld, dir: this.selDir };
   }
 
   // ---------------------------------------------------------------- Schleife
@@ -330,17 +457,46 @@ export class Game {
     self.fighter.animate(dt, p.vx, p.vz, this.camYaw, p.sprinting);
 
     this.updateOpponent(dt, now);
-    this.updateCamera(self);
+    this.updateCamera(self, dt);
+
+    const opp = this.opp;
+    this.hud.onCombat({
+      act: p.act,
+      dir: p.dir,
+      actT: p.actT,
+      need: windupNeed(p, weaponOf(p)),
+      atkHeld: this.atkHeld,
+      blkHeld: this.blkHeld,
+      selDir: this.selDir,
+      hpFrac: Math.max(0, Math.min(1, p.hp / HP_MAX)),
+      down: p.down,
+      downT: p.downT,
+      oppAct: opp?.act ?? Act.IDLE,
+      oppDir: opp?.dir ?? 0,
+      oppDown: opp?.down ?? false,
+      oppDownT: opp?.downT ?? 0,
+      canAct: this.canAct,
+    });
   }
 
   private tick(): void {
     const self = this.self!;
     const input = this.readInput();
     this.seq += 1;
-    stepPlayer(self.pred, input, this.opp?.latest);
+    stepPlayer(self.pred, input, this.opp?.latest, this.canAct);
     self.pending.push({ seq: this.seq, input });
     if (self.pending.length > 150) self.pending.shift();
-    this.net.send({ t: 'input', seq: this.seq, fwd: input.fwd, right: input.right, yaw: input.yaw, sprint: input.sprint });
+    this.net.send({
+      t: 'input',
+      seq: this.seq,
+      fwd: input.fwd,
+      right: input.right,
+      yaw: input.yaw,
+      sprint: input.sprint,
+      atk: input.atk === true,
+      blk: input.blk === true,
+      dir: input.dir ?? 0,
+    });
     this.hud.onStamina(self.pred.stamina, self.pred.exhausted);
   }
 
@@ -378,7 +534,7 @@ export class Game {
     opp.fighter.animate(dt, opp.vx, opp.vz, yaw, opp.sprinting);
   }
 
-  private updateCamera(self: SelfState): void {
+  private updateCamera(self: SelfState, dt: number): void {
     const yaw = this.camYaw;
     const pitch = this.lookPitch;
     const cosP = Math.cos(pitch);
@@ -400,6 +556,14 @@ export class Game {
       cx = (cx / r) * CAMERA_MAX_RADIUS;
       cz = (cz / r) * CAMERA_MAX_RADIUS;
     }
+    // Wackeln, wenn man getroffen wurde
+    if (this.shake > 0) {
+      const a = this.shake * this.shake * 0.09;
+      cx += (Math.random() - 0.5) * a;
+      cy += (Math.random() - 0.5) * a;
+      cz += (Math.random() - 0.5) * a;
+      this.shake = Math.max(0, this.shake - dt * 3);
+    }
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(tx + vx * 10, ty + vy * 10, tz + vz * 10);
   }
@@ -413,6 +577,10 @@ export class Game {
       camYaw: this.camYaw,
       pred: this.self ? { ...this.self.pred } : null,
       pending: this.self?.pending.length ?? 0,
+      canAct: this.canAct,
+      selDir: this.selDir,
+      atkHeld: this.atkHeld,
+      blkHeld: this.blkHeld,
       opp: this.opp ? { x: this.opp.lastX, z: this.opp.lastZ, snaps: this.opp.snaps.length } : null,
     };
   }

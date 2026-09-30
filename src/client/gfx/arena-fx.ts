@@ -61,7 +61,7 @@ export function buildFlames(emitters: Emitter[], mood: MoodDef): THREE.Mesh {
     uniforms: {
       uTime: sharedUniforms.uTime,
       uScale: { value: mood.flameScale },
-      uGlow: { value: 0.35 + night * 0.4 },
+      uGlow: { value: mood.flameGlow ?? 0.35 + night * 0.4 },
     },
     vertexShader: /* glsl */ `
       attribute vec2 aCorner;

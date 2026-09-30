@@ -36,12 +36,12 @@ class Client {
   }
 
   /** Wartet auf die naechste passende Nachricht (auch auf eine, die schon da ist). */
-  waitFor<T extends ServerMessage['t']>(type: T, extra?: (m: Extract<ServerMessage, { t: T }>) => boolean) {
+  waitFor<T extends ServerMessage['t']>(type: T, extra?: (m: Extract<ServerMessage, { t: T }>) => boolean, timeoutMs = 2000) {
     const pred = (m: ServerMessage) => m.t === type && (!extra || extra(m as Extract<ServerMessage, { t: T }>));
     const existing = this.messages.find(pred);
     if (existing) return Promise.resolve(existing as Extract<ServerMessage, { t: T }>);
     return new Promise<Extract<ServerMessage, { t: T }>>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Timeout beim Warten auf "${type}"`)), 2000);
+      const timer = setTimeout(() => reject(new Error(`Timeout beim Warten auf "${type}"`)), timeoutMs);
       this.waiters.push({
         pred,
         resolve: (m) => {
@@ -164,14 +164,16 @@ test('Eingaben bewegen die Figur, Server bestaetigt mit ack', async () => {
     await a.waitFor('room', (m) => m.phase === 'arena');
     await a.waitFor('state');
 
-    // 10 Schritte nach vorne (yaw 0 = -z). A startet bei z = 6. 10 liegt im erlaubten Vorrat.
+    // 10 Schritte nach vorne (yaw 0 = -z), im Takt gesendet wie ein echter Client. A startet bei z = 6.
     for (let seq = 1; seq <= 10; seq++) {
-      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: false });
+      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: false, atk: false, blk: false, dir: 0 });
+      await new Promise((r) => setTimeout(r, 34));
     }
     const state = await a.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 10);
     const me = state.players.find((p) => p.id === room.youId)!;
+    const step = 2.4 / 30;
     const walked = 6 - me.z;
-    assert.ok(Math.abs(walked - 10 * 2.4 * (1 / 30)) < 0.05, `10 Schritte = ca. 0,8 m, gelaufen: ${walked}`);
+    assert.ok(walked > 7 * step && walked < 13 * step, `ca. 10 Schritte erwartet, gelaufen: ${(walked / step).toFixed(1)}`);
     assert.ok(Math.abs(me.x) < 1e-6);
 
     // Der Gegner sieht die Bewegung auch
@@ -179,7 +181,7 @@ test('Eingaben bewegen die Figur, Server bestaetigt mit ack', async () => {
     assert.equal(stateB.players.find((p) => p.id === room.youId)!.z, me.z);
 
     // Alte Eingaben (seq zu klein) werden ignoriert
-    a.send({ t: 'input', seq: 5, fwd: 1, right: 0, yaw: 0, sprint: false });
+    a.send({ t: 'input', seq: 5, fwd: 1, right: 0, yaw: 0, sprint: false, atk: false, blk: false, dir: 0 });
     await new Promise((r) => setTimeout(r, 150));
     const last = [...a.messages].reverse().find((m): m is Extract<ServerMessage, { t: 'state' }> => m.t === 'state')!;
     assert.equal(last.players.find((p) => p.id === room.youId)!.ack, 10);
@@ -202,14 +204,14 @@ test('Eingaben-Flut macht nicht schneller (kein Speed-Hack, kein Teleport)', asy
 
     // 200 Sprint-Eingaben auf einmal (= 6,7 Sekunden Bewegung in wenigen Millisekunden)
     for (let seq = 1; seq <= 200; seq++) {
-      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: true });
+      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: true, atk: false, blk: false, dir: 0 });
     }
     const state = await a.waitFor('state', (m) => m.players.find((p) => p.id === room.youId)?.ack === 200);
     const me = state.players.find((p) => p.id === room.youId)!;
     const walked = 6 - me.z;
-    // Erlaubt: Vorrat (15) plus etwas Nachschub waehrend des Sendens, hoechstens ca. 20 Schritte
-    assert.ok(walked < 20 * 4.2 * (1 / 30) + 0.01, `zu weit gelaufen: ${walked} m`);
-    assert.ok(walked > 5 * 4.2 * (1 / 30), 'ein Teil der Eingaben muss zaehlen');
+    // Der Server nimmt nur wenige der neuesten Eingaben (Puffer) und macht pro Tick genau einen Schritt.
+    assert.ok(walked < 8 * (4.2 / 30) + 0.01, `zu weit gelaufen: ${walked} m`);
+    assert.ok(walked > 0, 'ein Teil der Eingaben muss zaehlen');
     a.close();
     b.close();
   });
@@ -245,6 +247,44 @@ test('Schrott-Nachrichten bringen den Server nicht zum Absturz', async () => {
     a.ws.send(JSON.stringify({ t: 'create', name: 12345 }));
     const room = await a.waitFor('room');
     assert.equal(room.players[0]!.name, 'Ritter');
+    a.close();
+  });
+});
+
+test('Training: Raum mit Trainingspuppe startet sofort und liefert Kampf-Zustand', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    a.send({ t: 'create', name: 'Solo', practice: true });
+    const room = await a.waitFor('room');
+    assert.equal(room.practice, true);
+    assert.equal(room.phase, 'arena');
+    assert.equal(room.players.length, 2);
+    assert.equal(room.players.filter((p) => p.bot).length, 1);
+
+    const state = await a.waitFor('state', (m) => m.match?.ph === 'countdown');
+    assert.equal(state.players.length, 2);
+    const me = state.players.find((p) => p.id === room.youId)!;
+    const puppet = state.players.find((p) => p.id !== room.youId)!;
+    assert.equal(typeof me.hp, 'number', 'eigene Lebenspunkte werden mitgeschickt');
+    assert.equal(puppet.hp, undefined, 'die des Gegners nicht (kein Balken, kein Schummeln)');
+    assert.equal(state.match!.rw, 2);
+
+    // Ein Trainingsraum kann nicht per Link betreten werden
+    const b = await connect(game);
+    b.send({ t: 'join', code: room.code, name: 'Fremder' });
+    assert.match((await b.waitFor('error')).message, /gibt es nicht/);
+    a.close();
+    b.close();
+  });
+});
+
+test('Countdown laeuft ab und der Kampf beginnt', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    a.send({ t: 'create', name: 'Solo', practice: true });
+    await a.waitFor('room');
+    const fight = await a.waitFor('state', (m) => m.match?.ph === 'fight', 6000);
+    assert.equal(fight.match!.round, 1);
     a.close();
   });
 });

@@ -11,6 +11,9 @@ const game = new Game(canvas, net, {
   onStamina: (v, ex) => ui.setStamina(v, ex),
   onLockOn: (on) => ui.setLockOn(on),
   onPointerLock: (locked) => ui.setPointerLock(locked),
+  onCombat: (v) => ui.updateCombat(v),
+  onEvents: (ev, youId) => ui.showEvents(ev, youId),
+  onMatch: (m, youId) => ui.updateMatch(m, youId),
 });
 
 if (new URLSearchParams(location.search).has('debug')) {
@@ -49,6 +52,7 @@ function showMenu(error?: string): void {
     name: loadName(),
     error,
     onCreate: (name) => connectAnd(name, { t: 'create', name }),
+    onPractice: (name) => connectAnd(name, { t: 'create', name, practice: true }),
     onJoin: (code, name) => connectAnd(name, { t: 'join', code, name }),
     onOwnGame: () => {
       inviteCode = null;
@@ -58,7 +62,7 @@ function showMenu(error?: string): void {
   });
 }
 
-async function connectAnd(name: string, first: { t: 'create'; name: string } | { t: 'join'; code: string; name: string }): Promise<void> {
+async function connectAnd(name: string, first: { t: 'create'; name: string; practice?: boolean } | { t: 'join'; code: string; name: string }): Promise<void> {
   if (connecting) return;
   connecting = true;
   saveName(name);
@@ -93,17 +97,26 @@ net.onMessage = (msg) => {
   switch (msg.t) {
     case 'room': {
       room = msg;
-      if (location.pathname !== `/r/${msg.code}`) history.replaceState(null, '', `/r/${msg.code}`);
-      inviteCode = msg.code;
+      // Trainingsraeume haben keinen Einladungslink
+      if (!msg.practice) {
+        if (location.pathname !== `/r/${msg.code}`) history.replaceState(null, '', `/r/${msg.code}`);
+        inviteCode = msg.code;
+      }
       if (msg.phase === 'arena') {
         if (!inArena) {
           inArena = true;
           game.enterArena(msg.youId, msg.players);
-          ui.showHud({
-            onResume: () => game.requestPointerLock(),
-            onToLobby: () => net.send({ t: 'toLobby' }),
-            onLeave: leaveRoom,
-          });
+          ui.showHud(
+            {
+              onResume: () => game.requestPointerLock(),
+              onToLobby: () => net.send({ t: 'toLobby' }),
+              onLeave: leaveRoom,
+              onRematch: () => net.send({ t: 'rematch' }),
+              practice: msg.practice,
+            },
+            msg.players,
+            msg.youId,
+          );
         }
       } else {
         inArena = false;
@@ -113,7 +126,7 @@ net.onMessage = (msg) => {
       break;
     }
     case 'state':
-      game.onState(msg.players);
+      game.onState(msg);
       break;
     case 'error':
       if (room) ui.toast(msg.message);

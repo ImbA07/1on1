@@ -3,7 +3,8 @@ import { FighterAnimator } from './gfx/fighter-anim.js';
 import { getFighterMaterials } from './gfx/fighter-materials.js';
 import { FighterMeshBuilder } from './gfx/fighter-mesh.js';
 import { ARMOR_GROUPS, buildFighterModel, type ArmorGroup, type ArmorTier } from './gfx/fighter-model.js';
-import { BONE_NAMES, createRig, type BoneName, type Rig } from './gfx/fighter-rig.js';
+import { MOUNT_POS, MOUNT_ROT_X } from './gfx/fighter-hand.js';
+import { BONE_NAMES, createRig, FINGER_BONE_NAMES, type BoneName, type Rig } from './gfx/fighter-rig.js';
 import { SecondarySim } from './gfx/fighter-sim.js';
 import { buildSword } from './gfx/fighter-weapon.js';
 
@@ -12,7 +13,8 @@ import { buildSword } from './gfx/fighter-weapon.js';
 //
 // Aufbau:
 //  - bones: benannte Gelenke (hips, spine, chest, neck, head, shoulder/upperArm/forearm/hand
-//    L+R, thigh/shin/foot/toe L+R) fuer spaetere Angriffs-/Block-Animationen
+//    L+R, thigh/shin/foot/toe L+R, Finger thumb/index/middle/ring/pinky 1..3 L+R)
+//    fuer spaetere Angriffs-/Block-Animationen
 //  - armor: je Ruestungsgruppe ein Objekt (body, helmet, torso, shoulders, arms, legs, tabard, cape)
 //  - weaponMount (rechte Hand) und shieldMount (linker Unterarm)
 //  - setArmorTier('light' | 'medium' | 'heavy'), Standard 'heavy'
@@ -48,7 +50,7 @@ export class Fighter {
     this.skeleton = new THREE.Skeleton(this.rig.list);
 
     const bones = {} as Record<BoneName, THREE.Bone>;
-    for (const n of BONE_NAMES) bones[n] = this.rig.bones[n]!;
+    for (const n of [...BONE_NAMES, ...FINGER_BONE_NAMES]) bones[n] = this.rig.bones[n]!;
     this.bones = bones;
 
     const armor = {} as Record<ArmorGroup, THREE.Group>;
@@ -60,10 +62,11 @@ export class Fighter {
     }
     this.armor = armor;
 
-    // Waffenhalterung in der rechten Faust (Griff laeuft quer durch die Faust)
+    // Waffenhalterung in der rechten Hand: Griffachse = lokale Z-Achse (Klinge nach -Z),
+    // liegt schraeg vor der Handflaeche; die Finger schliessen sich darum (siehe fighter-hand.ts)
     this.weaponMount.name = 'weaponMount';
-    this.weaponMount.position.set(-0.004, -0.072, 0);
-    this.weaponMount.rotation.set(-0.5, 0, 0);
+    this.weaponMount.position.copy(MOUNT_POS);
+    this.weaponMount.rotation.set(MOUNT_ROT_X, 0, 0);
     bones.handR.add(this.weaponMount);
     // Schildhalterung aussen am linken Unterarm (Schild zeigt nach aussen/-X)
     this.shieldMount.name = 'shieldMount';
