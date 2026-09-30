@@ -276,3 +276,42 @@ test('Puppe: kaempft gegen sich selbst ohne Fehler und greift an', () => {
   const attacks = events.filter((e) => e.k === 'hit' || e.k === 'block' || e.k === 'parry').length;
   assert.ok(attacks > 0, 'die Puppen sollten sich zumindest getroffen oder geblockt haben');
 });
+
+test('Fairness: ein Spieler mit Reaktionszeit 0,45 s blockt die Puppe meistens', () => {
+  const a: Fighter = { id: 'P', sim: newSimState(0, 6, 0) }; // menschlicher Spieler
+  const b: Fighter = { id: 'B', sim: newSimState(0, -6, Math.PI) }; // Puppe
+  const brain = new BotBrain(7);
+  const stats: [ReturnType<typeof newStats>, ReturnType<typeof newStats>] = [newStats(), newStats()];
+  const events: NetEvent[] = [];
+  const REACTION = 14; // Ticks (Wahrnehmung + Netz + Finger)
+  let seenAt = -1;
+  let dirSeen = 0;
+  let attacksSeen = 0;
+  for (let t = 0; t < 30 * 240; t++) {
+    // Der Spieler naehert sich bis auf Schlagweite und wehrt dann ab
+    const dist = Math.hypot(a.sim.x - b.sim.x, a.sim.z - b.sim.z);
+    const yaw = Math.atan2(-(b.sim.x - a.sim.x), -(b.sim.z - a.sim.z));
+    const ia: MoveInput = { fwd: dist > 2.2 ? 1 : 0, right: 0, yaw, sprint: false, atk: false, blk: false, dir: 0 };
+    if (b.sim.act === Act.WINDUP) {
+      if (seenAt < 0) {
+        seenAt = t;
+        attacksSeen++;
+      }
+      dirSeen = b.sim.dir;
+    } else if (b.sim.act !== Act.STRIKE) {
+      seenAt = -1;
+    }
+    if (seenAt >= 0 && t - seenAt >= REACTION) {
+      ia.blk = true;
+      ia.dir = counterDir(dirSeen); // mit Block-Hilfe
+    }
+    const ib = brain.think(b.sim, a.sim, true);
+    stepPlayer(a.sim, ia, b.sim, true);
+    stepPlayer(b.sim, ib, a.sim, true);
+    resolveStrikes([a, b], stats, events);
+  }
+  const blocked = events.filter((e) => (e.k === 'block' || e.k === 'parry') && e.d === 'P').length;
+  const hits = events.filter((e) => e.k === 'hit' && e.d === 'P').length;
+  assert.ok(attacksSeen >= 8, `genug Angriffe zum Auswerten (${attacksSeen})`);
+  assert.ok(blocked / (blocked + hits) >= 0.7, `geblockt ${blocked}, getroffen ${hits}`);
+});
