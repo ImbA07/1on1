@@ -1,4 +1,4 @@
-import type { NetEvent, NetMatch, PlayerInfo, Phase } from '../shared/protocol.js';
+import type { NetEvent, NetMatch, PlayerInfo, Phase, RoomSettings } from '../shared/protocol.js';
 import { MAX_NAME_LENGTH } from '../shared/protocol.js';
 import { Act, ZONE_NAMES, counterDir } from '../shared/weapons.js';
 import type { CombatView } from './game.js';
@@ -9,6 +9,7 @@ export interface RoomView {
   hostId: string;
   phase: Phase;
   players: PlayerInfo[];
+  settings?: RoomSettings;
 }
 
 type Child = Node | string | null | undefined | false;
@@ -199,7 +200,10 @@ export class UI {
     });
   }
 
-  showLobby(room: RoomView, handlers: { onStart(): void; onLeave(): void }): void {
+  showLobby(
+    room: RoomView,
+    handlers: { onStart(): void; onLeave(): void; onSettings(rounds: number): void },
+  ): void {
     this.hideHud();
     const isHost = room.hostId === room.youId;
     const link = `${location.origin}/r/${room.code}`;
@@ -229,6 +233,23 @@ export class UI {
       return li;
     });
 
+    // Einstellungen: Ersteller waehlt, der Gast sieht sie nur
+    const rounds = room.settings?.rounds ?? 3;
+    const roundBtns = [1, 3, 5].map((n) =>
+      h(
+        'button',
+        {
+          class: `seg${rounds === n ? ' on' : ''}`,
+          type: 'button',
+          disabled: !isHost,
+          'aria-pressed': String(rounds === n),
+          onClick: () => handlers.onSettings(n),
+        },
+        n === 1 ? '1 Runde' : `Best of ${n}`,
+      ),
+    );
+    const settingsBox = h('div', { class: 'settings' }, h('span', { class: 'label-inline' }, 'Runden'), h('div', { class: 'segs' }, ...roundBtns));
+
     const ready = room.players.length >= 2;
     const startBtn = h(
       'button',
@@ -243,6 +264,7 @@ export class UI {
       h('p', { class: 'hint' }, 'Schick diesen Link an deinen Freund:'),
       h('div', { class: 'row' }, linkInput, copyBtn),
       h('ul', { class: 'slots' }, ...slots),
+      settingsBox,
       isHost ? startBtn : h('p', { class: 'hint center' }, ready ? 'Warte, bis der Ersteller den Kampf startet ...' : 'Warte auf Gegner ...'),
       h('button', { class: 'btn link', type: 'button', onClick: handlers.onLeave }, 'Raum verlassen'),
     );

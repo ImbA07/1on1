@@ -5,8 +5,11 @@ import {
   ROOM_CODE_LENGTH,
   cleanName,
   normalizeCode,
+  DEFAULT_SETTINGS,
+  cleanRounds,
   type ClientMessage,
   type NetEvent,
+  type RoomSettings,
   type Phase,
   type PlayerInfo,
   type ServerMessage,
@@ -56,6 +59,7 @@ interface Room {
   practice: boolean;
   match: Match | null;
   tick: number;
+  settings: RoomSettings;
 }
 
 function send(ws: WebSocket | null, msg: ServerMessage): void {
@@ -79,6 +83,8 @@ export class RoomManager {
         return this.join(ws, msg.code, msg.name);
       case 'start':
         return this.start(ws);
+      case 'settings':
+        return this.settings(ws, msg.rounds);
       case 'toLobby':
         return this.toLobby(ws);
       case 'rematch':
@@ -218,6 +224,7 @@ export class RoomManager {
       practice,
       match: null,
       tick: 0,
+      settings: { ...DEFAULT_SETTINGS },
     };
     this.rooms.set(room.code, room);
     this.addPlayer(room, ws, rawName);
@@ -254,7 +261,7 @@ export class RoomManager {
   }
 
   private beginArena(room: Room): void {
-    room.match = new Match(2);
+    room.match = new Match((room.settings.rounds + 1) / 2);
     room.players.forEach((p, i) => {
       const s = SPAWNS[i]!;
       p.sim = newSimState(s.x, s.z, s.yaw);
@@ -264,6 +271,15 @@ export class RoomManager {
     });
     room.phase = 'arena';
     room.tick = 0;
+  }
+
+  private settings(ws: WebSocket, rounds: number): void {
+    const entry = this.byWs.get(ws);
+    if (!entry) return;
+    const { room, player } = entry;
+    if (room.hostId !== player.id || room.phase !== 'lobby') return;
+    room.settings.rounds = cleanRounds(rounds);
+    this.broadcastRoom(room);
   }
 
   private toLobby(ws: WebSocket): void {
@@ -358,6 +374,7 @@ export class RoomManager {
         phase: room.phase,
         players,
         practice: room.practice,
+        settings: room.settings,
       });
     }
   }

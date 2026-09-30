@@ -121,7 +121,11 @@ net.onMessage = (msg) => {
       } else {
         inArena = false;
         game.enterMenu();
-        ui.showLobby(msg, { onStart: () => net.send({ t: 'start' }), onLeave: leaveRoom });
+        ui.showLobby(msg, {
+          onStart: () => net.send({ t: 'start' }),
+          onLeave: leaveRoom,
+          onSettings: (rounds) => net.send({ t: 'settings', rounds }),
+        });
       }
       break;
     }

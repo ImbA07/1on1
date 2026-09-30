@@ -306,3 +306,34 @@ test('Revanche: nach dem Kampfende startet der Kampf im Training sofort neu', as
   assert.deepEqual(room.match.wins, [0, 0]);
   assert.equal(room.match.round, 1);
 });
+
+test('Lobby-Einstellung: nur der Ersteller stellt die Rundenzahl ein', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    const b = await connect(game);
+    a.send({ t: 'create', name: 'A' });
+    const room = await a.waitFor('room');
+    assert.equal(room.settings.rounds, 3);
+    b.send({ t: 'join', code: room.code, name: 'B' });
+    await b.waitFor('room');
+
+    b.send({ t: 'settings', rounds: 5 }); // Gast darf nicht
+    a.send({ t: 'settings', rounds: 5 });
+    const upd = await a.waitFor('room', (m) => m.settings.rounds === 5);
+    assert.equal(upd.settings.rounds, 5);
+    const updB = await b.waitFor('room', (m) => m.settings.rounds === 5);
+    assert.equal(updB.settings.rounds, 5);
+
+    a.send({ t: 'settings', rounds: 99 }); // ungueltig -> Standard 3
+    const back = await a.waitFor('room', (m) => m.settings.rounds === 3 && m.players.length === 2 && m !== upd);
+    assert.equal(back.settings.rounds, 3);
+
+    a.send({ t: 'settings', rounds: 1 });
+    await a.waitFor('room', (m) => m.settings.rounds === 1);
+    a.send({ t: 'start' });
+    const st = await a.waitFor('state');
+    assert.equal(st.match!.rw, 1, 'Best of 1 = ein Sieg reicht');
+    a.close();
+    b.close();
+  });
+});

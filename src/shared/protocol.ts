@@ -7,6 +7,15 @@ export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 export type Phase = 'lobby' | 'arena';
 
+/** Einstellungen, die der Ersteller in der Lobby waehlt. */
+export interface RoomSettings {
+  rounds: 1 | 3 | 5; // "Best of ..."
+}
+export const DEFAULT_SETTINGS: RoomSettings = { rounds: 3 };
+export function cleanRounds(v: unknown): 1 | 3 | 5 {
+  return v === 1 || v === 5 ? v : 3;
+}
+
 export interface PlayerInfo {
   id: string;
   name: string;
@@ -18,6 +27,7 @@ export type ClientMessage =
   | { t: 'create'; name: string; practice?: boolean } // practice = Training gegen die Puppe
   | { t: 'join'; code: string; name: string }
   | { t: 'start' } // nur der Ersteller
+  | { t: 'settings'; rounds: number } // nur der Ersteller, nur in der Lobby: 1, 3 oder 5 (Best of ...)
   | { t: 'toLobby' } // zurueck in die Lobby
   | { t: 'rematch' } // nach Kampfende: nochmal
   | {
@@ -104,6 +114,7 @@ export type ServerMessage =
       phase: Phase;
       players: PlayerInfo[];
       practice: boolean;
+      settings: RoomSettings;
     }
   | { t: 'state'; tk: number; players: NetPlayerState[]; ev: NetEvent[]; match: NetMatch | null }
   | { t: 'error'; message: string }
