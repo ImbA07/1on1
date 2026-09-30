@@ -68,7 +68,7 @@ function arm(p: Partial<ArmPose>): ArmPose {
 }
 
 // Posen (rechte Seite = Schwertarm). Linke Werte sind fuer den linken Arm (Vorzeichen schon gespiegelt).
-const GUARD_R = arm({ ux: 0.42, uz: 0.18, uy: 0.5, fx: 1.12, fy: -0.25, hx: -0.57, hz: 0.1 });
+export const GUARD_R = arm({ ux: 0.42, uz: 0.18, uy: 0.5, fx: 1.12, fy: -0.25, hx: -0.57, hz: 0.1 });
 const GUARD_L = arm({ ux: 0.32, uz: -0.2, uy: -0.45, fx: 1.25, fy: 0.75, hx: 0.3, hz: -0.15 });
 const RUN_R = arm({ ux: 0.05, uz: 0.16, uy: 0.25, fx: 1.35, fy: -0.2, hx: -0.7, hz: 0.1 });
 const RUN_L = arm({ ux: -0.05, uz: -0.14, uy: -0.2, fx: 1.45, fy: 0.2 });
@@ -118,7 +118,66 @@ interface FootState {
   toe: number;
 }
 
+/**
+ * Zusaetze der Kampf-Ebene (fighter-combat.ts), werden vor update() gesetzt.
+ * Winkel in Radiant, Wege in Metern (Figurenraum).
+ */
+export interface AnimMods {
+  hipX: number;
+  hipY: number;
+  hipZ: number;
+  hipPitch: number;
+  hipYaw: number;
+  hipRoll: number;
+  spinePitch: number;
+  spineYaw: number;
+  spineRoll: number;
+  chestPitch: number;
+  chestYaw: number;
+  chestRoll: number;
+  headPitch: number;
+  headYaw: number;
+  headRoll: number;
+  /** 0..1: rechtes Knie am Boden (Letzte Chance) */
+  kneel: number;
+  /** 0..1: Humpeln (Beintreffer) */
+  limp: number;
+  /** linke Hand haelt den Schildgriff */
+  shieldGrip: boolean;
+  /** 0..1: Waffenhand greift fester (Ausholen/Schlag) */
+  gripTension: number;
+}
+
+export function newAnimMods(): AnimMods {
+  return {
+    hipX: 0,
+    hipY: 0,
+    hipZ: 0,
+    hipPitch: 0,
+    hipYaw: 0,
+    hipRoll: 0,
+    spinePitch: 0,
+    spineYaw: 0,
+    spineRoll: 0,
+    chestPitch: 0,
+    chestYaw: 0,
+    chestRoll: 0,
+    headPitch: 0,
+    headYaw: 0,
+    headRoll: 0,
+    kneel: 0,
+    limp: 0,
+    shieldGrip: false,
+    gripTension: 0,
+  };
+}
+
+// Kniend (rechtes Knie am Boden): Fussziele und Becken, Figurenraum
+const KNEEL_HIP_Y = 0.525;
+const KNEEL_HIP_Z = 0.06;
+
 export class FighterAnimator {
+  readonly mods: AnimMods = newAnimMods();
   private readonly B: Record<string, THREE.Bone>;
   private readonly rest: Record<string, THREE.Vector3> = {};
 
@@ -128,8 +187,13 @@ export class FighterAnimator {
   private accF = 0; // Beschleunigung vorwaerts (m/s^2, geglaettet)
   private dirX = 0;
   private dirZ = -1;
-  private moveAmp = 0;
-  private runBlend = 0;
+  /** 0..1 Bewegungsstaerke (fuer die Kampf-Ebene lesbar) */
+  moveAmp = 0;
+  /** 0..1 Rennen */
+  runBlend = 0;
+  /** Armschwung links (Gehen), Atmen -1..1 */
+  swingL = 0;
+  breathSin = 0;
   private freq = 1;
   private phase = Math.random();
   private prevYaw: number | null = null;
@@ -258,6 +322,7 @@ export class FighterAnimator {
       this.turnAct = approach(this.turnAct, 0, 6, dt);
     }
     this.legOff = clamp(this.legOff, -1.0, 1.0);
+    if (this.mods.kneel > 0.01) this.legOff *= 1 - this.mods.kneel; // kniend: Beine folgen dem Oberkoerper
     const turn = this.turnAct;
 
     // ---------------- Gangzyklus ----------------
@@ -319,6 +384,32 @@ export class FighterAnimator {
       st.yaw = lerp(idleYaw, moveYaw, nb);
     }
 
+    // ---------------- Knien (Letzte Chance) und Humpeln ----------------
+    const M = this.mods;
+    const kn = M.kneel;
+    if (kn > 0.001) {
+      const fL = this.feet[0]!;
+      const fR = this.feet[1]!;
+      const e = smooth01(kn);
+      fL.x = lerp(fL.x, -0.14, e);
+      fL.z = lerp(fL.z, -0.33, e);
+      fL.lift = lerp(fL.lift, 0, e);
+      fL.pitch = lerp(fL.pitch, 0, e);
+      fL.yaw = lerp(fL.yaw, 0.1, e);
+      fL.toe = lerp(fL.toe, 0, e);
+      fR.x = lerp(fR.x, 0.12, e);
+      fR.z = lerp(fR.z, KNEEL_HIP_Z + 0.53, e);
+      fR.lift = lerp(fR.lift, 0, e);
+      fR.pitch = lerp(fR.pitch, -1.05, e);
+      fR.yaw = lerp(fR.yaw, -0.05, e);
+      fR.toe = lerp(fR.toe, 0.95, e);
+    }
+    if (M.limp > 0.001 && this.moveAmp > 0.05) {
+      // rechtes Bein schont: kuerzerer Schritt, Becken sackt auf dieser Seite
+      const fR = this.feet[1]!;
+      fR.lift *= 1 - 0.45 * M.limp;
+    }
+
     // ---------------- Becken ----------------
     const psL = this.phase;
     const idle = 1 - Math.max(amp, turn * 0.5);
@@ -343,8 +434,18 @@ export class FighterAnimator {
     const stanceYaw = -0.13 * idle;
 
     const hips = B.hips!;
-    hips.position.set(swayX, hy, this.rest.hips!.z - 0.01 * idle);
-    hips.rotation.set(lean * 0.6, this.legOff + gaitYaw + stanceYaw, roll);
+    const limpDrop = M.limp * this.moveAmp * Math.max(0, Math.sin(TAU * (psL + 0.5))) * 0.03;
+    const ke = smooth01(kn);
+    hips.position.set(
+      lerp(swayX, 0.01, ke) + M.hipX,
+      lerp(hy - limpDrop, KNEEL_HIP_Y, ke) + M.hipY,
+      lerp(this.rest.hips!.z - 0.01 * idle, KNEEL_HIP_Z, ke) + M.hipZ,
+    );
+    hips.rotation.set(
+      lean * 0.6 + M.hipPitch - 0.12 * ke,
+      lerp(this.legOff + gaitYaw + stanceYaw, 0, ke) + M.hipYaw,
+      roll + M.hipRoll + limpDrop * 2.5,
+    );
 
     // ---------------- Rumpf, Kopf ----------------
     this.breath += dt * lerp(1.45, 3.4, this.exertion);
@@ -352,32 +453,50 @@ export class FighterAnimator {
     const lead = clamp(this.yawRate * 0.06, -0.25, 0.25);
     const spine = B.spine!;
     const chest = B.chest!;
-    spine.rotation.set(lean * 0.3 + 0.03 * idle, -(this.legOff + gaitYaw) * 0.5 - stanceYaw * 0.45 + lead * 0.4, -roll * 0.55);
-    chest.rotation.set(lean * 0.25 - br * 0.012 * (1 + this.exertion), -(this.legOff + gaitYaw) * 0.5 - stanceYaw * 0.35 + lead * 0.6, -roll * 0.35);
+    const legYaw = lerp(this.legOff + gaitYaw, 0, ke);
+    const stYaw = lerp(stanceYaw, 0, ke);
+    spine.rotation.set(
+      lean * 0.3 + 0.03 * idle + M.spinePitch,
+      -legYaw * 0.5 - stYaw * 0.45 + lead * 0.4 + M.spineYaw,
+      -roll * 0.55 + M.spineRoll,
+    );
+    chest.rotation.set(
+      lean * 0.25 - br * 0.012 * (1 + this.exertion) + M.chestPitch,
+      -legYaw * 0.5 - stYaw * 0.35 + lead * 0.6 + M.chestYaw,
+      -roll * 0.35 + M.chestRoll,
+    );
     chest.position.y = this.rest.chest!.y + br * 0.0035;
-    const upperYaw = this.legOff + gaitYaw + stanceYaw + spine.rotation.y + chest.rotation.y;
-    const upperPitch = lean * 1.15 + 0.03 * idle - br * 0.012;
+    // Kopf gleicht die Rumpfdrehung aus (Blick bleibt beim Gegner); Kampf-Zusaetze nur teilweise
+    const upperYaw = legYaw + stYaw + spine.rotation.y + chest.rotation.y - (M.spineYaw + M.chestYaw) * 0.25;
+    const upperPitch = lean * 1.15 + 0.03 * idle - br * 0.012 + (M.spinePitch + M.chestPitch + M.hipPitch) * 0.7 - 0.12 * ke;
     const neck = B.neck!;
     const head = B.head!;
     const look = Math.sin(this.time * 0.31) * 0.06 * idle + Math.sin(this.time * 0.17 + 2) * 0.04 * idle;
-    neck.rotation.set(-upperPitch * 0.35, -upperYaw * 0.4 + lead * 0.3, roll * 0.2);
-    head.rotation.set(-upperPitch * 0.45 + walkBob * 1.5 + 0.05 * run, -upperYaw * 0.55 + lead * 0.5 + look, roll * 0.25);
+    neck.rotation.set(-upperPitch * 0.35 + M.headPitch * 0.4, -upperYaw * 0.4 + lead * 0.3 + M.headYaw * 0.4, roll * 0.2 + M.headRoll * 0.4);
+    head.rotation.set(
+      -upperPitch * 0.45 + walkBob * 1.5 + 0.05 * run + M.headPitch * 0.6,
+      -upperYaw * 0.55 + lead * 0.5 + look + M.headYaw * 0.6,
+      roll * 0.25 + M.headRoll * 0.6,
+    );
 
     // ---------------- Arme ----------------
     const swingL = Math.sin(TAU * psL) * amp * Math.max(0, Math.abs(fwdness)) * lerp(0.28, 0.42, run);
     const swingR = -swingL * lerp(0.25, 0.6, run);
+    this.swingL = swingL;
+    this.breathSin = br;
     const tip = this.swordSpring.update(walkBob * 6 + runBob * 3, dt);
     this.setArm(this.armR, GUARD_R, RUN_R, run, swingR, tip, br, 1);
     this.setArm(this.armL, GUARD_L, RUN_L, run, swingL, 0, br, -1);
 
     // ---------------- Finger ----------------
     // Rechts: Schwertgriff, im Stand minimal lockerer, beim Rennen fester.
-    this.handRigR.apply(this.grip, this.grip, 0, -0.025 + 0.012 * br + 0.03 * run, 0);
+    this.handRigR.apply(this.grip, this.grip, 0, -0.025 + 0.012 * br + 0.03 * run + 0.03 * M.gripTension, 0);
     // Links: locker und halb offen, gibt dem Armschwung leicht nach; beim Rennen lockere Faust.
     const swingVel = (swingL - this.prevSwingL) / dt;
     this.prevSwingL = swingL;
     const lag = this.fingerLag.update(clamp(-swingVel * 0.06, -0.14, 0.14), dt);
-    this.handRigL.apply(RELAXED, LOOSE_FIST, run * 0.85, 0.035 * Math.sin(this.breath + 0.8) + lag, 0.02 * br);
+    if (M.shieldGrip) this.handRigL.apply(LOOSE_FIST, LOOSE_FIST, 0, 0.12 + 0.02 * br, 0.1);
+    else this.handRigL.apply(RELAXED, LOOSE_FIST, run * 0.85, 0.035 * Math.sin(this.breath + 0.8) + lag, 0.02 * br);
 
     // ---------------- Beine (IK) ----------------
     this.solveLeg(this.legL, this.feet[0]!, hips);

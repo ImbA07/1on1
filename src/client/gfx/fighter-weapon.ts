@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { loft, TriBuilder, tube, v3, xf } from './fighter-geo.js';
+import { box, loft, TriBuilder, tube, v3, xf } from './fighter-geo.js';
 import { FighterMeshBuilder } from './fighter-mesh.js';
 import type { FighterMaterials } from './fighter-materials.js';
 
@@ -93,9 +93,7 @@ export function buildSword(mats: FighterMaterials): THREE.Group {
   }
   const guard = tube(gp, gr, { segs: 6, capStart: true, capEnd: true, side: v3(1, 0, 0) });
   // Mittelstueck (Quillon-Block)
-  const block = xf(new THREE.BoxGeometry(0.02, 0.022, 0.03).toNonIndexed(), { t: [0, 0.062, 0] });
-  block.deleteAttribute('normal');
-  block.deleteAttribute('uv');
+  const block = xf(box(0.02, 0.022, 0.03), { t: [0, 0.062, 0] });
   // Radknauf
   const pommel = loft(
     [
@@ -115,9 +113,7 @@ export function buildSword(mats: FighterMaterials): THREE.Group {
     { segs: 8, capTop: true, capBottom: true },
   );
   xf(boss, { r: [0, 0, Math.PI / 2], t: [0, -0.083, 0] });
-  const peen = xf(new THREE.BoxGeometry(0.01, 0.012, 0.012).toNonIndexed(), { t: [0, -0.118, 0] });
-  peen.deleteAttribute('normal');
-  peen.deleteAttribute('uv');
+  const peen = xf(box(0.01, 0.012, 0.012), { t: [0, -0.118, 0] });
   // Zwingen am Griff
   const ferrules = [
     loft(

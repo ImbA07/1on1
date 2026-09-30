@@ -155,6 +155,22 @@ export class SecondarySim {
     this.setCapsule('scab', this.scabBone, this.scabBone, 0.03, _ZERO, _SCAB_TIP);
   }
 
+  /**
+   * Schubs fuer Umhang, Waffenrock und Helmbusch (Weltraum, m/s), z. B. bei einem Schlag.
+   * Wirkt nach unten hin staerker (oben sind die Punkte festgehalten).
+   */
+  impulse(v: THREE.Vector3): void {
+    for (const ch of this.chains) {
+      const k = ch.def.name === 'scab' ? 0.5 : ch.def.name === 'plume' ? 0.6 : 1;
+      for (let c = 0; c < ch.cols; c++) {
+        for (let r = 1; r < ch.rows; r++) {
+          const f = (r / (ch.rows - 1)) * k * STEP;
+          ch.prev[c * ch.rows + r]!.addScaledVector(v, -f);
+        }
+      }
+    }
+  }
+
   /** Nach dem Setzen der Skelett-Pose aufrufen (Weltmatrizen muessen aktuell sein). */
   update(dt: number, root: THREE.Object3D): void {
     this.updateCapsules();

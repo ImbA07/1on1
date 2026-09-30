@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { FighterAnimator } from './gfx/fighter-anim.js';
+import { CombatLayer, newCombatPose, type CombatPose } from './gfx/fighter-combat.js';
 import { getFighterMaterials } from './gfx/fighter-materials.js';
 import { FighterMeshBuilder } from './gfx/fighter-mesh.js';
 import { ARMOR_GROUPS, buildFighterModel, type ArmorGroup, type ArmorTier } from './gfx/fighter-model.js';
 import { MOUNT_POS, MOUNT_ROT_X } from './gfx/fighter-hand.js';
 import { BONE_NAMES, createRig, FINGER_BONE_NAMES, type BoneName, type Rig } from './gfx/fighter-rig.js';
+import { buildShield, shieldMountQuaternion } from './gfx/fighter-shield.js';
 import { SecondarySim } from './gfx/fighter-sim.js';
 import { buildSword } from './gfx/fighter-weapon.js';
 
@@ -18,8 +20,13 @@ import { buildSword } from './gfx/fighter-weapon.js';
 //  - armor: je Ruestungsgruppe ein Objekt (body, helmet, torso, shoulders, arms, legs, tabard, cape)
 //  - weaponMount (rechte Hand) und shieldMount (linker Unterarm)
 //  - setArmorTier('light' | 'medium' | 'heavy'), Standard 'heavy'
+//  - setWeapon('swordShield' | 'sword'), Standard 'swordShield'
+//  - setCombat(pose): Kampfzustand pro Bild (vor animate) -> Ausholen, Schlag, Block, Taumeln, Knien
 
-export type { ArmorTier, ArmorGroup, BoneName };
+export type { ArmorTier, ArmorGroup, BoneName, CombatPose };
+
+/** Waffen-Ausruestung der Figur (Schild gehoert zur Waffe, nicht zur Ruestung). */
+export type WeaponId = 'swordShield' | 'sword';
 
 function angleLerp(a: number, b: number, t: number): number {
   const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -37,8 +44,12 @@ export class Fighter {
   private readonly skeleton: THREE.Skeleton;
   private readonly animator: FighterAnimator;
   private readonly sim: SecondarySim;
+  private readonly combat: CombatLayer;
+  private readonly shield: THREE.Group;
+  private weaponId: WeaponId = 'swordShield';
+  private readonly _imp = new THREE.Vector3();
   private readonly tierMeshes = new Map<ArmorTier, THREE.Mesh[]>();
-  private readonly weapon: THREE.Group;
+  private readonly sword: THREE.Group;
   private tier: ArmorTier | null = null;
   private disposed = false;
 
@@ -68,16 +79,21 @@ export class Fighter {
     this.weaponMount.position.copy(MOUNT_POS);
     this.weaponMount.rotation.set(MOUNT_ROT_X, 0, 0);
     bones.handR.add(this.weaponMount);
-    // Schildhalterung aussen am linken Unterarm (Schild zeigt nach aussen/-X)
+    // Schildhalterung aussen am linken Unterarm. Achsen der Halterung: +Z = Schild-Vorderseite
+    // (vom Unterarm weg, Handrueckenseite), +Y = Schild oben (quer zum Unterarm).
     this.shieldMount.name = 'shieldMount';
     this.shieldMount.position.set(-0.07, -0.14, 0);
+    shieldMountQuaternion(this.shieldMount.quaternion);
     bones.forearmL.add(this.shieldMount);
+    this.shield = buildShield(getFighterMaterials(), accent);
+    this.shieldMount.add(this.shield);
 
-    this.weapon = buildSword(getFighterMaterials());
-    this.weaponMount.add(this.weapon);
+    this.sword = buildSword(getFighterMaterials());
+    this.weaponMount.add(this.sword);
 
     this.animator = new FighterAnimator(this.rig);
     this.sim = new SecondarySim(this.rig);
+    this.combat = new CombatLayer(this.rig, this.animator);
     this.setArmorTier('heavy');
     // Erste Pose sofort setzen, damit die Figur nie in der Ruhelage aufblitzt
     this.animator.update(1 / 60, 0, 0, 0, false);
@@ -111,6 +127,25 @@ export class Fighter {
     this.tier = tier;
   }
 
+  get weapon(): WeaponId {
+    return this.weaponId;
+  }
+
+  /** Waffe wechseln: 'swordShield' zeigt das Schild am linken Unterarm. */
+  setWeapon(id: WeaponId): void {
+    this.weaponId = id;
+    this.shield.visible = id === 'swordShield';
+    this.combat.shield = id === 'swordShield';
+  }
+
+  /**
+   * Kampfzustand fuer dieses Bild setzen (vor animate). Fehlende Felder behalten ihren Wert.
+   * Siehe CombatPose (act, dir, actT, tickFrac, need, staggerT, down, ...).
+   */
+  setCombat(c: Partial<CombatPose>): void {
+    Object.assign(this.combat.pose, c);
+  }
+
   setPosition(x: number, z: number, yaw: number): void {
     this.root.position.set(x, 0, z);
     this.root.rotation.y = yaw;
@@ -119,9 +154,16 @@ export class Fighter {
   /** vx/vz: Geschwindigkeit in der Welt (Meter pro Sekunde). */
   animate(dt: number, vx: number, vz: number, yaw: number, sprinting: boolean): void {
     if (this.disposed) return;
+    this.combat.pre(dt);
     this.animator.update(dt, vx, vz, yaw, sprinting);
+    this.combat.post();
     this.root.updateMatrixWorld(true);
     this.sim.update(dt, this.root);
+    if (this.combat.hasImpulse) {
+      this.combat.hasImpulse = false;
+      this._imp.copy(this.combat.impulse).applyQuaternion(this.root.quaternion);
+      this.sim.impulse(this._imp);
+    }
   }
 
   dispose(): void {
@@ -137,4 +179,4 @@ export class Fighter {
   }
 }
 
-export { angleLerp };
+export { angleLerp, newCombatPose };

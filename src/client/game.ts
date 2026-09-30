@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildArena, CAMERA_MAX_RADIUS, type Arena } from './arena.js';
-import { Fighter, angleLerp } from './fighter.js';
+import { Fighter, angleLerp, newCombatPose, type CombatPose } from './fighter.js';
 import type { Net } from './net.js';
 import type { NetEvent, NetMatch, PlayerInfo, ServerMessage } from '../shared/protocol.js';
 import { applyNet } from '../shared/netstate.js';
@@ -49,6 +49,18 @@ interface Snapshot {
   z: number;
   yaw: number;
   sp: boolean;
+  // Kampfzustand (fuer die Animation, mit derselben Verzoegerung wie die Position abgespielt)
+  ac: number;
+  d: number;
+  at: number;
+  sg: number;
+  dz: number;
+  am: number;
+  lg: number;
+  dn: boolean;
+  dt: number;
+  rv: boolean;
+  need: number;
 }
 
 interface SelfState {
@@ -75,6 +87,8 @@ interface OpponentState {
   dir: number;
   down: boolean;
   downT: number;
+  /** Hilfszustand, um windupNeed fuer den Gegner auszurechnen */
+  needSim: SimState;
 }
 
 export class Game {
@@ -108,6 +122,11 @@ export class Game {
   private matchKey = '';
   private matchRound = 0;
   private shake = 0;
+
+  // Rundenausgang fuer Sieger-/Verlierer-Pose
+  private matchPhase = '';
+  private matchWinner = '';
+  private readonly combatPose: CombatPose = newCombatPose();
 
   private lastFrame = performance.now();
   private menuAngle = 0.6;
@@ -182,6 +201,7 @@ export class Game {
         dir: 0,
         down: false,
         downT: 0,
+        needSim: newSimState(0, 0, 0),
       };
       oppFighter.setPosition(oppSpawn.x, oppSpawn.z, oppSpawn.yaw);
     }
@@ -233,6 +253,8 @@ export class Game {
 
     // Kampf-Phase (Countdown/Kampf/Rundenende) und Ereignisse
     this.canAct = msg.match?.ph === 'fight';
+    this.matchPhase = msg.match?.ph ?? '';
+    this.matchWinner = msg.match && msg.match.ld >= 0 ? (msg.match.ids[msg.match.ld] ?? '') : '';
     if (msg.match) {
       const m = msg.match;
       const key = `${m.ph}|${m.round}|${m.wins.join(',')}|${m.tm}|${m.ld}|${m.rm.join(',')}|${m.stats ? 1 : 0}`;
@@ -263,7 +285,28 @@ export class Game {
       this.opp.dir = other.d;
       this.opp.down = other.dn;
       this.opp.downT = other.dt;
-      this.opp.snaps.push({ t: performance.now(), x: other.x, z: other.z, yaw: other.yaw, sp: other.sp });
+      const ns = this.opp.needSim;
+      ns.armT = other.am;
+      ns.dazeT = other.dz;
+      ns.exhausted = other.ex;
+      this.opp.snaps.push({
+        t: performance.now(),
+        x: other.x,
+        z: other.z,
+        yaw: other.yaw,
+        sp: other.sp,
+        ac: other.ac,
+        d: other.d,
+        at: other.at,
+        sg: other.sg,
+        dz: other.dz,
+        am: other.am,
+        lg: other.lg,
+        dn: other.dn,
+        dt: other.dt,
+        rv: other.rv,
+        need: windupNeed(ns, weaponOf(ns)),
+      });
       if (this.opp.snaps.length > 30) this.opp.snaps.shift();
     }
 
@@ -454,6 +497,27 @@ export class Game {
       self.renderZ += (p.z - self.renderZ) * k;
     }
     self.fighter.setPosition(self.renderX, self.renderZ, this.camYaw);
+    // Kampf-Animation: vorhergesagter Zustand, zwischen den Ticks weitergefuehrt
+    const cp = this.combatPose;
+    const w = weaponOf(p);
+    cp.act = p.act;
+    cp.dir = p.dir;
+    cp.actT = p.actT;
+    cp.tickFrac = Math.min(1, this.acc / TICK);
+    cp.need = windupNeed(p, w);
+    cp.windupMax = w.windupMax;
+    cp.strikeTicks = w.strikeTicks;
+    cp.recovery = w.recovery;
+    cp.blockRaise = w.blockRaise;
+    cp.staggerT = p.staggerT;
+    cp.down = p.down;
+    cp.downT = p.downT;
+    cp.revived = p.revived;
+    cp.armT = p.armT;
+    cp.legT = p.legT;
+    cp.dazeT = p.dazeT;
+    cp.outcome = this.outcomeFor(self.id);
+    self.fighter.setCombat(cp);
     self.fighter.animate(dt, p.vx, p.vz, this.camYaw, p.sprinting);
 
     this.updateOpponent(dt, now);
@@ -506,6 +570,7 @@ export class Game {
 
     const renderT = now - OPPONENT_DELAY_MS;
     const snaps = opp.snaps;
+    this.applyOpponentCombat(opp, renderT);
     let x: number, z: number, yaw: number;
     if (renderT <= snaps[0]!.t) {
       ({ x, z, yaw } = snaps[0]!);
@@ -532,6 +597,43 @@ export class Game {
     opp.lastZ = z;
     opp.fighter.setPosition(x, z, yaw);
     opp.fighter.animate(dt, opp.vx, opp.vz, yaw, opp.sprinting);
+  }
+
+  /** Rundenausgang aus Sicht eines Spielers: 1 gewonnen, -1 verloren, 0 laeuft. */
+  private outcomeFor(id: string): number {
+    if ((this.matchPhase !== 'roundEnd' && this.matchPhase !== 'matchEnd') || !this.matchWinner) return 0;
+    return this.matchWinner === id ? 1 : -1;
+  }
+
+  /**
+   * Kampfzustand des Gegners zum selben (verzoegerten) Zeitpunkt wie seine Position abspielen:
+   * letzter Schnappschuss vor renderT, der Rest bis zum naechsten Tick als Bruchteil.
+   */
+  private applyOpponentCombat(opp: OpponentState, renderT: number): void {
+    const snaps = opp.snaps;
+    let i = snaps.length - 1;
+    while (i > 0 && snaps[i]!.t > renderT) i--;
+    const s = snaps[i]!;
+    const w = weaponOf(opp.needSim);
+    const cp = this.combatPose;
+    cp.act = s.ac;
+    cp.dir = s.d;
+    cp.actT = s.at;
+    cp.tickFrac = Math.max(0, Math.min(1, (renderT - s.t) / (TICK * 1000)));
+    cp.need = s.need;
+    cp.windupMax = w.windupMax;
+    cp.strikeTicks = w.strikeTicks;
+    cp.recovery = w.recovery;
+    cp.blockRaise = w.blockRaise;
+    cp.staggerT = s.sg;
+    cp.down = s.dn;
+    cp.downT = s.dt;
+    cp.revived = s.rv;
+    cp.armT = s.am;
+    cp.legT = s.lg;
+    cp.dazeT = s.dz;
+    cp.outcome = this.outcomeFor(opp.id);
+    opp.fighter.setCombat(cp);
   }
 
   private updateCamera(self: SelfState, dt: number): void {
