@@ -575,7 +575,7 @@ export class UI {
       this.hadPointerLock = true;
       this.banner.classList.add('hidden');
       this.pauseCard.classList.add('hidden');
-    } else if (this.hadPointerLock) {
+    } else if (this.hadPointerLock && !this.endCard) {
       this.banner.classList.add('hidden');
       this.pauseCard.classList.remove('hidden');
     } else {

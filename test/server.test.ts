@@ -288,3 +288,21 @@ test('Countdown laeuft ab und der Kampf beginnt', async () => {
     a.close();
   });
 });
+
+test('Revanche: nach dem Kampfende startet der Kampf im Training sofort neu', async () => {
+  const { RoomManager } = await import('../src/server/room.js');
+  const mgr = new RoomManager();
+  const sent: ServerMessage[] = [];
+  const ws = { readyState: 1, OPEN: 1, send: (d: string) => sent.push(JSON.parse(d) as ServerMessage) } as unknown as import('ws').WebSocket;
+  mgr.handle(ws, { t: 'create', name: 'Solo', practice: true });
+  // Kampf kuenstlich beenden
+  const rooms = (mgr as unknown as { rooms: Map<string, { match: { phase: string; wins: number[]; round: number } }> }).rooms;
+  const room = [...rooms.values()][0]!;
+  room.match.phase = 'matchEnd';
+  room.match.wins = [2, 0];
+  room.match.round = 3;
+  mgr.handle(ws, { t: 'rematch' });
+  assert.equal(room.match.phase, 'countdown');
+  assert.deepEqual(room.match.wins, [0, 0]);
+  assert.equal(room.match.round, 1);
+});

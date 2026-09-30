@@ -3,7 +3,7 @@
 Taktisches Mittelalter-Duell im Browser. Link teilen, 1 gegen 1.
 Das ganze Konzept steht in [KONZEPT.md](KONZEPT.md).
 
-**Stand:** Erster Baustein (Verbindung + Bewegung). Man kann einen Raum erstellen, den Link teilen und sich als Figur in der Burghof-Arena bewegen (gehen, rennen, Kamera, Fokus auf den Gegner). Der eigentliche Kampf kommt als Nächstes.
+**Stand:** Spielbarer Kern. Man kann einen Raum erstellen, den Link teilen und sich in der Burghof-Arena duellieren (Angriff und Block aus drei Richtungen, Ausdauer, Trefferzonen, versteckte Lebenspunkte, Runden). Es gibt auch ein **Training gegen eine Puppe**, damit man alleine üben kann. Die Kampf-Animationen der Figuren fehlen noch.
 
 ## Steuerung
 
@@ -12,8 +12,15 @@ Das ganze Konzept steht in [KONZEPT.md](KONZEPT.md).
 | W A S D | Bewegen |
 | Shift | Rennen (kostet Ausdauer) |
 | Maus | Umschauen (erst ins Bild klicken) |
+| Linke Maustaste halten | Ausholen. Dabei die Maus nach **oben / links / rechts** bewegen, um die Richtung zu wählen. **Loslassen = zuschlagen** |
+| Rechte Maustaste halten | Blocken. Die Maus wählt die Richtung, aus der du den Schlag erwartest |
+| Block-Taste beim Ausholen | Finte (Angriff abbrechen, kostet Ausdauer) |
 | Mausrad-Klick | Fokus auf den Gegner an/aus |
 | Esc | Menü |
+
+**Wichtig beim Blocken:** Du musst die Seite decken, auf der du das Schwert des Gegners auf deinem Bildschirm siehst. Greift er von *seiner* linken Seite an, kommt der Schlag bei dir von *rechts*. Die orange Markierung am Ring zeigt dir aktuell die richtige Block-Richtung. Blockst du erst ganz kurz vor dem Treffer, ist es ein **Perfect Block**: Der Angreifer taumelt und du verlierst keine Ausdauer.
+
+Während du ausholst oder blockst, bleibt die Kamera stehen (nutze den Fokus auf den Gegner, damit sie ihm folgt).
 
 ## Lokal starten (Entwicklung)
 
