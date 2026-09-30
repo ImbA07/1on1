@@ -167,11 +167,11 @@ export class SwordTrail {
       C[q] = c.r;
       C[q + 1] = c.g;
       C[q + 2] = c.b;
-      C[q + 3] = a * 0.08 * tail;
+      C[q + 3] = a * 0.03 * tail;
       C[q + 4] = c.r;
       C[q + 5] = c.g;
       C[q + 6] = c.b;
-      C[q + 7] = a * 0.62 * tail;
+      C[q + 7] = a * 0.36 * tail;
     }
     (this.geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.geo.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;

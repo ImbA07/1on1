@@ -572,10 +572,10 @@ export class FighterAnimator {
     if (M.idleShuffle && pw > 0.9) {
       this.shuffleT -= dt;
       if (this.shuffleT <= 0) {
-        this.shuffleT = 1.4 + Math.random() * 2.2;
+        this.shuffleT = 0.9 + Math.random() * 1.6;
         const f = this.plants[this.shuffleFoot]!;
-        f.jx = (Math.random() * 2 - 1) * 0.03;
-        f.jz = (Math.random() * 2 - 1) * 0.045;
+        f.jx = (Math.random() * 2 - 1) * 0.04;
+        f.jz = (Math.random() * 2 - 1) * 0.07;
         this.shuffleFoot = 1 - this.shuffleFoot;
       }
     }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Act } from '../../shared/weapons.js';
-import { GUARD_R, type AnimMods, type FighterAnimator } from './fighter-anim.js';
+import { GUARD_R, Spring, type AnimMods, type FighterAnimator } from './fighter-anim.js';
 import { MOUNT_ROT_X } from './fighter-hand.js';
 import type { Rig } from './fighter-rig.js';
 
@@ -29,6 +29,8 @@ export interface CombatPose {
   strikeTicks: number;
   recovery: number;
   blockRaise: number;
+  /** Ticks bis ein umgelenkter Block wieder wirkt (actT startet dann negativ) */
+  blockRedirectRaise: number;
   /** verbleibende Ticks Taumeln */
   staggerT: number;
   /** "Letzte Chance": kniet */
@@ -49,11 +51,12 @@ export function newCombatPose(): CombatPose {
     dir: 0,
     actT: 0,
     tickFrac: 0,
-    need: 15,
+    need: 14,
     windupMax: 36,
     strikeTicks: 4,
-    recovery: 12,
-    blockRaise: 4,
+    recovery: 11,
+    blockRaise: 6,
+    blockRedirectRaise: 11,
     staggerT: 0,
     down: false,
     downT: 0,
@@ -149,9 +152,9 @@ function travel(from: V3, to: V3): V3 {
 // Ausholen muss aus Gegnersicht (von vorn) sofort lesbar sein: die Klinge ragt deutlich
 // ueber den Kopf (oben) bzw. seitlich ueber die Schulter hinaus (links/rechts).
 const B_CHAMBER: V3[] = [
-  [0.3, 0.88, 0.36], // oben: hoch ueber dem Kopf, schraeg nach hinten
-  [-0.88, 0.4, 0.26], // links: weit ueber die linke Schulter nach aussen/hinten
-  [0.9, 0.38, 0.24], // rechts: weit ueber die rechte Schulter nach aussen/hinten
+  [0.12, 0.96, 0.26], // oben: fast senkrecht hoch ueber dem Kopf (klare senkrechte Linie)
+  [-0.92, 0.3, 0.26], // links: flach und weit ueber die linke Schulter nach aussen
+  [0.93, 0.28, 0.24], // rechts: flach und weit ueber die rechte Schulter nach aussen
 ];
 // Mitte: Klinge quer (Hieb, kein Stich)
 const B_MID: V3[] = [
@@ -166,9 +169,9 @@ const B_END: V3[] = [
 ];
 
 const W_CHAMBER: V3[] = [
-  [0.16, 0.66, 0.02],
-  [-0.19, 0.38, -0.02],
-  [0.42, 0.3, 0.06],
+  [0.12, 0.72, 0.0],
+  [-0.21, 0.36, -0.02],
+  [0.44, 0.28, 0.06],
 ];
 const W_MID: V3[] = [
   [0.08, 0.36, -0.44],
@@ -231,7 +234,7 @@ const SHIELD_LOSE = shk([-0.3, -0.4, -0.06], [-0.9, 0, -0.35], [-0.6, -0.2, 0.7]
 
 const BODY_GUARD = body({});
 const BODY_CHAMBER = [
-  body({ spinePitch: 0.06, chestPitch: 0.08, hipZ: 0.025, hipY: -0.01, headPitch: -0.06 }),
+  body({ spinePitch: 0.1, chestPitch: 0.12, hipZ: 0.03, hipY: -0.02, headPitch: -0.1 }),
   body({ spineYaw: 0.2, chestYaw: 0.18, hipYaw: 0.1, chestRoll: -0.05, hipZ: 0.02, hipY: -0.015 }),
   body({ spineYaw: -0.22, chestYaw: -0.2, hipYaw: -0.1, chestRoll: 0.06, hipZ: 0.03, hipY: -0.015 }),
 ];
@@ -333,6 +336,7 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 const _qI = new THREE.Quaternion();
 const _Y = new THREE.Vector3(0, 1, 0);
+const _SW = new THREE.Vector3();
 
 interface ArmBones {
   shoulder: THREE.Bone;
@@ -376,6 +380,34 @@ export class CombatLayer {
   /** Impuls fuer Umhang/Waffenrock (Figurenraum, m/s), wird von aussen abgeholt */
   readonly impulse = new THREE.Vector3();
   hasImpulse = false;
+  /** Staerke der Klingenspur in diesem Bild (0 = keine) */
+  trailStrength = 0;
+  /** 0..1: wie stark der Gangzyklus gerade unterdrueckt wird (Ausfallschritt, Rueckstoss) */
+  gaitDamp = 0;
+
+  // Trefferreaktionen: gedaempfte Federn (Ziel 0), per Stoss angeregt
+  private readonly sp = {
+    hipX: new Spring(150, 0.42),
+    hipY: new Spring(150, 0.42),
+    hipZ: new Spring(130, 0.45),
+    spinePitch: new Spring(140, 0.4),
+    spineYaw: new Spring(140, 0.42),
+    spineRoll: new Spring(140, 0.42),
+    headPitch: new Spring(170, 0.38),
+    headRoll: new Spring(170, 0.4),
+    buckle: new Spring(90, 0.55),
+    swX: new Spring(120, 0.4),
+    swY: new Spring(120, 0.4),
+    swZ: new Spring(120, 0.4),
+    shX: new Spring(140, 0.42),
+    shY: new Spring(140, 0.42),
+    shZ: new Spring(140, 0.42),
+  };
+  private readonly spList: Spring[] = Object.values(this.sp);
+  private impactT = 9; // Sekunden seit dem letzten Stoss
+  private collapse = 0; // schnelles Einsacken (down)
+  private readonly swOff = new THREE.Vector3();
+  private readonly shOff = new THREE.Vector3();
 
   constructor(
     private readonly rig: Rig,
@@ -436,14 +468,22 @@ export class CombatLayer {
       if (c.act === Act.BLOCK) this.blockFrom = -1;
       if (c.act === Act.STAGGER) {
         this.staggerMax = Math.max(6, c.staggerT);
-        this.addImpulse(0, 0.4, -1.6);
+        this.addImpulse(0, 0.6, -2.4);
       }
       if (c.act === Act.STRIKE) {
         const side = c.dir === 1 ? 1 : c.dir === 2 ? -1 : 0;
-        this.addImpulse(-side * 1.4, 0.3, 1.3);
+        this.addImpulse(-side * 2.2, 0.5, 2.6);
+        // Ausfallschritt: vorderer (linker) Fuss tritt vor, hinterer bleibt als Standbein stehen
+        M.stepNow[0] = true;
+        M.stepNowDur = 0.13;
       }
     } else if (c.act === Act.BLOCK && c.dir !== this.prevDir) {
       this.blockFrom = this.prevDir;
+    }
+    // Fusswechsel bei Richtungswechsel (Ausholen/Block): der Fuss auf der neuen Seite setzt um
+    if ((c.act === Act.BLOCK || c.act === Act.WINDUP) && c.act === this.prevAct && c.dir !== this.prevDir) {
+      M.stepNow[c.dir === 1 ? 0 : 1] = true;
+      M.stepNowDur = 0.16;
     }
     if (c.act === Act.STAGGER) this.staggerMax = Math.max(this.staggerMax, c.staggerT);
     this.prevAct = c.act;
@@ -479,12 +519,35 @@ export class CombatLayer {
       for (let i = 0; i < NB; i++) this.cur.body[i]! += (this.tgt.body[i]! - this.cur.body[i]!) * kb;
     }
 
+    // --- Trefferreaktionen (Federn) ---
+    this.impactT += dt;
+    const S = this.sp;
+    for (let i = 0; i < this.spList.length; i++) this.spList[i]!.update(0, dt);
+    const impactE =
+      Math.abs(S.swX.x) + Math.abs(S.swY.x) + Math.abs(S.swZ.x) + Math.abs(S.shX.x) + Math.abs(S.shY.x) + Math.abs(S.shZ.x);
+    this.collapse = Math.max(0, this.collapse - dt * 2.2);
+
+    // --- Fussarbeit ---
+    this.footwork(c);
+
+    // --- Klingenspur und Gangdaempfung ---
+    const tt = c.actT + clamp(c.tickFrac, 0, 1);
+    if (c.act === Act.STRIKE) this.trailStrength = 1;
+    else if (c.act === Act.RECOVERY && !this.recFromWindup) this.trailStrength = Math.max(0, 1 - tt / 3.5) * 0.8;
+    else if (c.act === Act.WINDUP && tt > c.need) this.trailStrength = 0.22 * clamp((tt - c.need) / 8, 0, 1);
+    else this.trailStrength = 0;
+    const lungeDamp = c.act === Act.STRIKE ? 0.9 : c.act === Act.RECOVERY && !this.recFromWindup ? 0.6 * (1 - tt / c.recovery) : 0;
+    const knockDamp = this.impactT < 0.35 ? 0.9 : 0;
+    this.gaitDamp = Math.max(lungeDamp, knockDamp, c.act === Act.STAGGER ? 0.7 : 0);
+
     // --- Gewichte ---
-    const active = c.act !== Act.IDLE || c.down || c.outcome !== 0 || this.kneel > 0.02;
-    this.wR += ((active ? 1 : 0) - this.wR) * kExp(active ? 14 : 7, dt);
+    const active = c.act !== Act.IDLE || c.down || c.outcome !== 0 || this.kneel > 0.02 || impactE > 0.004;
+    // Kampfhaltung auch im Stand und Gehen (nur beim Rennen uebernimmt der Armschwung)
+    const wantR = active ? 1 : 1 - this.anim.runBlend;
+    this.wR += (wantR - this.wR) * kExp(active ? 14 : 7, dt);
     this.wL += ((this.shield ? 1 : 0) - this.wL) * kExp(8, dt);
     const wantKneel = c.down || c.outcome < 0 ? 1 : 0;
-    this.kneel += (wantKneel - this.kneel) * kExp(wantKneel ? 3.2 : 2.2, dt);
+    this.kneel += (wantKneel - this.kneel) * kExp(wantKneel ? (this.collapse > 0 ? 9 : 3.2) : 2.2, dt);
     this.limp += ((c.legT > 0 ? 1 : 0) - this.limp) * kExp(3, dt);
     this.daze += ((c.dazeT > 0 ? 1 : 0) - this.daze) * kExp(4, dt);
     this.armHurt += ((c.armT > 0 ? 1 : 0) - this.armHurt) * kExp(3, dt);
@@ -515,7 +578,19 @@ export class CombatLayer {
       M.headYaw += Math.sin(t * 4.1 + 1) * 0.07 * this.daze;
       M.spineRoll += Math.sin(t * 2.3) * 0.04 * this.daze;
     }
-    M.kneel = this.kneel;
+    // Stoss-Federn auf den Rumpf
+    M.hipX += S.hipX.x;
+    M.hipY += S.hipY.x - 0.05 * Math.max(0, S.buckle.x);
+    M.hipZ += S.hipZ.x;
+    M.spinePitch += S.spinePitch.x;
+    M.chestPitch += S.spinePitch.x * 0.6;
+    M.spineYaw += S.spineYaw.x;
+    M.spineRoll += S.spineRoll.x;
+    M.headPitch += S.headPitch.x;
+    M.headRoll += S.headRoll.x;
+    this.swOff.set(S.swX.x, S.swY.x, S.swZ.x);
+    this.shOff.set(S.shX.x, S.shY.x, S.shZ.x);
+    M.kneel = clamp(Math.max(this.kneel, S.buckle.x * 0.85), 0, 1);
     M.limp = this.limp;
     M.shieldGrip = this.shield;
     M.gripTension = this.tension;
@@ -532,6 +607,19 @@ export class CombatLayer {
     // Grundhaltung (auch Basis fuer alles andere)
     o.setSword(G).setBody(BODY_GUARD).setShield(SHIELD_GUARD);
     if (run > 0.01) o.mixShield(SHIELD_GUARD, SHIELD_RUN, run);
+    // Lebendiger Kampfstand: Schwertspitze kreist langsam, Rumpf pendelt, Gewicht wandert
+    if (c.act === Act.IDLE && !c.down && c.outcome === 0) {
+      const tm = this.time;
+      const lv = 1 - 0.6 * this.anim.moveAmp;
+      o.sw.x += (Math.sin(tm * 1.15) * 0.028 + Math.sin(tm * 2.7) * 0.008) * lv;
+      o.sw.y += (Math.sin(tm * 0.83 + 1) * 0.024 + Math.sin(tm * 3.1) * 0.006) * lv;
+      o.sw.z += Math.cos(tm * 1.15) * 0.02 * lv;
+      o.body[7] = Math.sin(tm * 0.52) * 0.07 * lv; // spineYaw
+      o.body[10] = Math.sin(tm * 0.52 + 0.6) * 0.05 * lv; // chestYaw
+      o.body[0] = Math.sin(tm * 0.37) * 0.018 * lv; // hipX (Gewicht)
+      o.hw.y += Math.sin(tm * 0.9 + 2) * 0.02 * lv;
+      o.hw.x += Math.sin(tm * 0.6) * 0.015 * lv;
+    }
 
     if (c.outcome > 0) {
       o.setSword(SWORD_WIN).setShield(SHIELD_WIN).setBody(BODY_WIN);
@@ -592,9 +680,13 @@ export class CombatLayer {
         break;
       }
       case Act.BLOCK: {
-        const r = easeOut(t / Math.max(1, c.blockRaise), 2);
         const from = this.blockFrom;
-        if (from >= 0 && from !== d) {
+        const redirect = from >= 0 && from !== d;
+        // actT kann nach einem Richtungswechsel negativ sein: Fortschritt 0..1 ueber die ganze Wartezeit
+        const t0 = redirect ? c.blockRaise - c.blockRedirectRaise : 0;
+        const span = Math.max(1, c.blockRaise - t0);
+        const r = easeOut((t - t0) / span, redirect ? 1.6 : 2);
+        if (redirect) {
           o.mixShield(SHIELD_BLOCK[from]!, SHIELD_BLOCK[d]!, r).mixSword(SWORD_BLOCK[from]!, SWORD_BLOCK[d]!, r).mixBody(BODY_BLOCK[from]!, BODY_BLOCK[d]!, r);
         } else {
           o.mixShield(SHIELD_GUARD, SHIELD_BLOCK[d]!, r).mixSword(G, SWORD_BLOCK[d]!, r).mixBody(BODY_GUARD, BODY_BLOCK[d]!, r);
@@ -610,7 +702,8 @@ export class CombatLayer {
         const k = s < 0.22 ? easeOut(s / 0.22, 2) : 1 - smooth01((s - 0.22) / 0.78);
         const amp = clamp(this.staggerMax / 12, 0.9, 1.4);
         o.mixSword(G, SWORD_STAGGER, k * Math.min(1, amp)).mixShield(SHIELD_GUARD, SHIELD_STAGGER, k * Math.min(1, amp));
-        o.mixBody(BODY_GUARD, BODY_STAGGER, k);
+        const lead = this.impactT < 0.25 ? 0.5 + 2 * this.impactT : 1; // Zonen-Stoss fuehrt am Anfang
+        o.mixBody(BODY_GUARD, BODY_STAGGER, k * lead);
         for (let i = 0; i < NB; i++) o.body[i]! *= amp;
         break;
       }
@@ -632,18 +725,163 @@ export class CombatLayer {
   /** Nach animator.update(): Arme per IK in die Kampfpose bringen (ueberblendet). */
   post(): void {
     const cur = this.cur;
-    if (this.wR > 0.002) this.solveArm(this.armR, cur.sw, cur.sp, cur.sq, null, this.wR);
+    if (this.wR > 0.002) {
+      _SW.copy(cur.sw).add(this.swOff);
+      this.solveArm(this.armR, _SW, cur.sp, cur.sq, null, this.wR);
+    }
     if (this.wL > 0.002) {
       // Schildarm: Gehschwung und Atmen leicht mitnehmen
-      _W.copy(cur.hw);
+      _W.copy(cur.hw).add(this.shOff);
       _W.z -= this.anim.swingL * 0.12 * (1 - this.anim.runBlend * 0.5);
       _W.y += this.anim.breathSin * 0.004;
       this.solveArm(this.armL, _W, cur.hp, null, cur.hn, this.wL);
     }
   }
 
+  /** Fuss-Ziele je Zustand (Figurenraum: -Z vorn, +X rechts). Index 0 = links (vorn), 1 = rechts (hinten). */
+  private footwork(c: CombatPose): void {
+    const M = this.anim.mods;
+    const d = c.dir === 1 || c.dir === 2 ? c.dir : 0;
+    let lx = 0;
+    let lz = 0;
+    let rx = 0;
+    let rz = 0;
+    let hold = -1;
+    switch (c.act) {
+      case Act.WINDUP:
+        // Anlauf: hinteres Bein laedt (tritt etwas zurueck), je nach Seite
+        if (d === 0) rz = 0.07;
+        else if (d === 1) {
+          lz = 0.04;
+          rz = 0.04;
+          rx = -0.02;
+        } else {
+          rz = 0.1;
+          rx = 0.03;
+        }
+        break;
+      case Act.STRIKE:
+        lz = -0.14; // vorderer Fuss tritt in den Schlag
+        rz = 0.05;
+        hold = 1; // Standbein bleibt stehen -> Ausfallschritt
+        break;
+      case Act.RECOVERY:
+        lz = this.recFromWindup ? 0 : -0.06;
+        break;
+      case Act.BLOCK:
+        // breiter Stand, je nach Seite der Fuss unter dem Schild
+        lx = d === 1 ? -0.06 : -0.03;
+        rx = d === 2 ? 0.06 : 0.03;
+        lz = d === 0 ? -0.03 : 0;
+        rz = 0.05;
+        break;
+      case Act.STAGGER:
+        rz = 0.1;
+        lz = 0.04;
+        break;
+    }
+    M.footTX[0] = lx;
+    M.footTZ[0] = lz;
+    M.footTX[1] = rx;
+    M.footTZ[1] = rz;
+    M.holdFoot = hold;
+    M.idleShuffle = c.act === Act.IDLE && !c.down && c.outcome === 0;
+  }
+
+  /**
+   * Stoss-Reaktion (additiv, klingt in ~0,4 s ab). px/pz: Richtung, in die der Koerper gestossen
+   * wird (Figurenraum, +Z = nach hinten), zone 0 Kopf/1 Torso/2 Arm/3 Bein.
+   */
+  impact(kind: string, px: number, pz: number, zone: number, heavy: boolean): void {
+    const S = this.sp;
+    const g = heavy ? 1.6 : 1;
+    const kick = (sp: Spring, v: number) => {
+      sp.v += v * g;
+    };
+    this.impactT = 0;
+    const side = clamp(px, -1, 1);
+    const back = clamp(pz, -1, 1);
+    switch (kind) {
+      case 'hit':
+        kick(S.hipZ, 0.9 * back);
+        kick(S.hipX, 0.7 * side);
+        if (zone === 0) {
+          kick(S.headPitch, 12); // Nacken reisst zurueck
+          kick(S.spinePitch, 3.2);
+          kick(S.headRoll, -6 * (side || 0.6));
+        } else if (zone === 2) {
+          kick(S.swX, 4.2); // Waffenarm schleudert weg
+          kick(S.swZ, 3.6);
+          kick(S.swY, 1.6);
+          kick(S.spineYaw, -4);
+        } else if (zone === 3) {
+          kick(S.buckle, 11); // Bein knickt ein
+          kick(S.hipY, -1.2);
+          kick(S.spineRoll, 3);
+          kick(S.headPitch, -2);
+        } else {
+          kick(S.spinePitch, -7); // Koerper kruemmt sich
+          kick(S.headPitch, -3.5);
+          kick(S.spineRoll, -2.5 * side);
+          kick(S.swY, -1.4);
+          kick(S.shZ, 1.2);
+          kick(S.buckle, 3);
+        }
+        this.addImpulse(side * 2.2, 0.6, back * 3);
+        break;
+      case 'block':
+        kick(S.shZ, 1.8); // Schild federt zurueck
+        kick(S.shY, 0.5);
+        kick(S.shX, -0.4);
+        kick(S.hipZ, 0.6 * back);
+        kick(S.spinePitch, 1.3);
+        kick(S.headPitch, 0.8);
+        kick(S.swZ, 0.5);
+        this.addImpulse(side * 1.2, 0.3, back * 1.8);
+        break;
+      case 'parry':
+        kick(S.swY, 4.2); // Waffenarm wird aufgerissen
+        kick(S.swZ, 3.6);
+        kick(S.swX, 1.4);
+        kick(S.spinePitch, 3.2);
+        kick(S.spineYaw, 2);
+        kick(S.headPitch, 2.2);
+        kick(S.hipZ, 0.8 * Math.max(0.5, back));
+        this.addImpulse(side * 1.5, 0.8, 3.2);
+        break;
+      case 'break':
+        kick(S.shX, -3.2); // Schild und Arme werden aufgerissen
+        kick(S.shY, 2.2);
+        kick(S.shZ, 1.2);
+        kick(S.swX, 2);
+        kick(S.swY, 1.6);
+        kick(S.spinePitch, 3);
+        kick(S.headPitch, 2.8);
+        kick(S.hipZ, 1 * Math.max(0.5, back));
+        this.addImpulse(side * 1.5, 0.6, 3.4);
+        break;
+      case 'down':
+        this.collapse = 1;
+        kick(S.buckle, 5);
+        kick(S.headPitch, -5);
+        kick(S.spinePitch, -2.6);
+        kick(S.hipY, -0.8);
+        this.addImpulse(0, 1, 1.2);
+        break;
+      case 'revive':
+        kick(S.hipY, 0.9);
+        kick(S.spinePitch, 2);
+        kick(S.headPitch, 3);
+        this.addImpulse(0, -0.8, 0.5);
+        break;
+    }
+  }
+
   private addImpulse(x: number, y: number, z: number): void {
-    this.impulse.set(x, y, z);
+    if (!this.hasImpulse) this.impulse.set(0, 0, 0);
+    this.impulse.x += x;
+    this.impulse.y += y;
+    this.impulse.z += z;
     this.hasImpulse = true;
   }
 

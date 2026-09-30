@@ -583,6 +583,7 @@ export class Game {
     cp.strikeTicks = w.strikeTicks;
     cp.recovery = w.recovery;
     cp.blockRaise = w.blockRaise;
+    cp.blockRedirectRaise = w.blockRedirectRaise;
     cp.staggerT = p.staggerT;
     cp.down = p.down;
     cp.downT = p.downT;
@@ -707,6 +708,7 @@ export class Game {
     cp.strikeTicks = w.strikeTicks;
     cp.recovery = w.recovery;
     cp.blockRaise = w.blockRaise;
+    cp.blockRedirectRaise = w.blockRedirectRaise;
     cp.staggerT = s.sg;
     cp.down = s.dn;
     cp.downT = s.dt;

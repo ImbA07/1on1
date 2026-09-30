@@ -7,6 +7,7 @@ import { ARMOR_GROUPS, buildFighterModel, type ArmorGroup, type ArmorTier } from
 import { MOUNT_POS, MOUNT_ROT_X } from './gfx/fighter-hand.js';
 import { BONE_NAMES, createRig, FINGER_BONE_NAMES, type BoneName, type Rig } from './gfx/fighter-rig.js';
 import { buildShield, shieldMountQuaternion } from './gfx/fighter-shield.js';
+import { SwordTrail } from './gfx/fighter-trail.js';
 import { SecondarySim } from './gfx/fighter-sim.js';
 import { buildSword } from './gfx/fighter-weapon.js';
 
@@ -28,6 +29,19 @@ export type { ArmorTier, ArmorGroup, BoneName, CombatPose };
 /** Waffen-Ausruestung der Figur (Schild gehoert zur Waffe, nicht zur Ruestung). */
 export type WeaponId = 'swordShield' | 'sword';
 
+/** Art einer Trefferreaktion fuer playImpact. */
+export type ImpactKind = 'hit' | 'block' | 'parry' | 'break' | 'down' | 'revive';
+
+export interface ImpactInfo {
+  /** Trefferzone bei 'hit': 0 Kopf, 1 Torso, 2 Arm, 3 Bein */
+  zone?: number;
+  /** Richtung des Stosses in der Welt (normiert), also weg vom Angreifer */
+  dirX?: number;
+  dirZ?: number;
+  /** starker Treffer (Todesstoss, Kopf) */
+  heavy?: boolean;
+}
+
 function angleLerp(a: number, b: number, t: number): number {
   const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
   return a + d * t;
@@ -39,6 +53,11 @@ export class Fighter {
   readonly weaponMount = new THREE.Group();
   readonly shieldMount = new THREE.Group();
   readonly armor: Readonly<Record<ArmorGroup, THREE.Group>>;
+  /**
+   * Effekte in Weltkoordinaten (Klingenspur). Das Spiel haengt dieses Objekt neben `root`
+   * in die Szene; dispose() entfernt und leert es.
+   */
+  readonly worldFx = new THREE.Group();
 
   private readonly rig: Rig;
   private readonly skeleton: THREE.Skeleton;
@@ -48,6 +67,11 @@ export class Fighter {
   private readonly shield: THREE.Group;
   private weaponId: WeaponId = 'swordShield';
   private readonly _imp = new THREE.Vector3();
+  private readonly trail: SwordTrail;
+  private readonly lastPos = new THREE.Vector3();
+  private hasLastPos = false;
+  private readonly _tb = new THREE.Vector3();
+  private readonly _tt = new THREE.Vector3();
   private readonly tierMeshes = new Map<ArmorTier, THREE.Mesh[]>();
   private readonly sword: THREE.Group;
   private tier: ArmorTier | null = null;
@@ -90,6 +114,9 @@ export class Fighter {
 
     this.sword = buildSword(getFighterMaterials());
     this.weaponMount.add(this.sword);
+    this.worldFx.name = 'fighterWorldFx';
+    this.trail = new SwordTrail(accent);
+    this.worldFx.add(this.trail.mesh);
 
     this.animator = new FighterAnimator(this.rig);
     this.sim = new SecondarySim(this.rig);
@@ -146,6 +173,31 @@ export class Fighter {
     Object.assign(this.combat.pose, c);
   }
 
+  /**
+   * Trefferreaktion abspielen (kurzer, additiver Stoss ueber der laufenden Pose).
+   *  'hit'    Treffer (info.zone, info.dirX/dirZ Stossrichtung in der Welt, info.heavy)
+   *  'block'  Schild faengt ab, federt zurueck
+   *  'parry'  fuer den ANGREIFER: Waffenarm wird aufgerissen, Oberkoerper kippt weg
+   *  'break'  Block durchbrochen: Schild und Arme werden aufgerissen
+   *  'down'   Kollaps aufs Knie
+   *  'revive' wieder hoch
+   */
+  playImpact(kind: ImpactKind, info: ImpactInfo = {}): void {
+    if (this.disposed) return;
+    // Weltrichtung in den Figurenraum (+Z = hinten, +X = rechts)
+    const yaw = this.root.rotation.y;
+    let wx = info.dirX ?? 0;
+    let wz = info.dirZ ?? 0;
+    if (wx === 0 && wz === 0) {
+      // ohne Angabe: nach hinten
+      wx = Math.sin(yaw);
+      wz = Math.cos(yaw);
+    }
+    const px = wx * Math.cos(yaw) - wz * Math.sin(yaw);
+    const pz = wx * Math.sin(yaw) + wz * Math.cos(yaw);
+    this.combat.impact(kind, px, pz, info.zone ?? 1, info.heavy === true);
+  }
+
   setPosition(x: number, z: number, yaw: number): void {
     this.root.position.set(x, 0, z);
     this.root.rotation.y = yaw;
@@ -154,11 +206,33 @@ export class Fighter {
   /** vx/vz: Geschwindigkeit in der Welt (Meter pro Sekunde). */
   animate(dt: number, vx: number, vz: number, yaw: number, sprinting: boolean): void {
     if (this.disposed) return;
+    // Tatsaechliche Verschiebung (inkl. Ausfallschritt/Rueckstoss) -> aufgesetzte Fuesse
+    const p = this.root.position;
+    if (this.hasLastPos) {
+      const dx = p.x - this.lastPos.x;
+      const dz = p.z - this.lastPos.z;
+      if (dx * dx + dz * dz < 1) {
+        const ry = this.root.rotation.y;
+        this.animator.setRootDelta(dx * Math.cos(ry) - dz * Math.sin(ry), dx * Math.sin(ry) + dz * Math.cos(ry));
+      } else {
+        this.trail.clear(); // Sprung (neue Runde)
+      }
+    }
+    this.lastPos.copy(p);
+    this.hasLastPos = true;
+
     this.combat.pre(dt);
-    this.animator.update(dt, vx, vz, yaw, sprinting);
+    // Ausfallschritt/Rueckstoss sind keine Laufschritte: Gangzyklus waehrenddessen gedaempft
+    const damp = 1 - this.combat.gaitDamp;
+    this.animator.update(dt, vx * damp, vz * damp, yaw, sprinting);
     this.combat.post();
     this.root.updateMatrixWorld(true);
     this.sim.update(dt, this.root);
+
+    // Klingenspur (Weltraum): Klingenmitte und Spitze
+    this._tb.set(0, 0, -0.33).applyMatrix4(this.sword.matrixWorld);
+    this._tt.set(0, 0, -0.87).applyMatrix4(this.sword.matrixWorld);
+    this.trail.update(dt > 0 ? Math.min(dt, 0.1) : 1 / 60, this._tb, this._tt, this.root.visible ? this.combat.trailStrength : 0);
     if (this.combat.hasImpulse) {
       this.combat.hasImpulse = false;
       this._imp.copy(this.combat.impulse).applyQuaternion(this.root.quaternion);
@@ -175,6 +249,9 @@ export class Fighter {
       if (o instanceof THREE.Mesh) o.geometry.dispose();
     });
     this.skeleton.dispose();
+    this.trail.dispose();
+    this.worldFx.removeFromParent();
+    this.worldFx.clear();
     this.tierMeshes.clear();
   }
 }
