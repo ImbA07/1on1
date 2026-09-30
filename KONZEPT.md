@@ -324,3 +324,25 @@ Bereits entschieden (davor): Trefferzone nach Schlagrichtung, Standard-Tastenbel
 Bereits entschieden (frühere Runden): Kamera über der Schulter mit Lock-on per Mausrad, begrenzte Finten, Rapier statt Dolch, „Letzte Chance"-Todesstoß, freie Ausrüstungswahl, realistische Gewalt, Ergebnis mit Statistik.
 
 Bereits entschieden (letzte Runde): Server entscheidet bei Treffern, beide stimmen über die Arena ab, Ausrüstung wird vor jeder Runde neu (geheim) gewählt, Übungsmodus gegen Puppe, Aufgeben per Taste mit Bestätigung, kein Chat, Blocks kosten nur Ausdauer, kein Entwaffnen.
+
+---
+
+## 13. Umsetzungsstand Kampf (erste Version)
+
+Umgesetzt und als Startwerte eingestellt (Schwert & Schild, schwere Rüstung, mittleres Tempo):
+
+- **Angriff:** Linke Maustaste halten = ausholen (frühestens nach 0,5 s, automatischer Schlag nach 1,2 s), Maus bewegen = Richtung (oben, links, rechts), Loslassen = Schlag (0,13 s aktiv), danach 0,4 s Erholung. Zusammen ca. 1 Sekunde.
+- **Block:** Rechte Maustaste halten, Maus wählt die Richtung. Der Block wirkt nach 0,13 s. Ein Treffer in den ersten 0,17 s nach dem Aufbau ist ein **Perfect Block**: Der Angreifer taumelt 0,8 s, der Blockende zahlt keine Ausdauer.
+- **Richtungen sind gespiegelt:** Was beim Angreifer von links kommt, erscheint beim Verteidiger von rechts. Der Verteidiger deckt die Seite, auf der er das Schwert auf seinem Bildschirm sieht. Am Richtungsring zeigt eine orange Markierung als Lernhilfe die richtige Block-Seite.
+- **Finte:** Block-Taste während des Ausholens bricht den Angriff ab (8 Ausdauer, kurze Erholung). Richtungswechsel beim Ausholen kostet Zeit und 3 Ausdauer.
+- **Kamera:** Während Angriff oder Block hält die Kamera still (die Maus wählt die Richtung). Mit dem Fokus auf den Gegner folgt sie ihm trotzdem.
+- **Trefferzonen:** Von oben Kopf (x1,5), seitlich Torso (x1,0), Arm beim Ausholen des Gegners (x0,7), Bein in der Erholung (x0,7). Schwere Rüstung lässt 60 % des Schadens durch. Grundschaden 24, 100 Lebenspunkte.
+- **Nachwirkungen:** Kopf = 0,5 s benommen, Arm = 3 s langsameres Ausholen, Bein = 3 s langsamer laufen. Ein Treffer unterbricht Ausholen und Block.
+- **Ausdauer:** Ausholen 10, geblockter Schlag kostet den Blockenden 20 (Schild halbiert auf 10). Ist sie leer, ist man erschöpft (langsamer, längeres Ausholen, Block wird durchbrochen).
+- **Kein Lebensbalken:** Lebenspunkte sieht nur der Server. Man merkt es an einem roten Bildschirmrand, einer kurzen Treffer-Silhouette und der Figur des Gegners.
+- **Letzte Chance:** Bei 0 Leben kniet der Spieler 3 Sekunden. Trifft er oder blockt er perfekt, steht er mit 15 Leben wieder auf (einmal pro Runde). Ein Treffer auf den Knienden beendet die Runde.
+- **Runden:** Countdown 3 s, Rundenende 3,5 s. Der Ersteller wählt in der Lobby 1, 3 oder 5 Runden (Best of). Danach Statistik und Revanche.
+- **Training:** Trainingspuppe, die sich bewegt, angreift und in 40 % der Fälle die richtige Seite blockt.
+- **Server:** 30 Schritte pro Sekunde, eine Eingabe pro Schritt und Spieler. Nur der Server entscheidet über Treffer.
+
+**Noch offen im Kampf:** Sound, Blut und Trefferfunken, weitere Waffen (Zweihänder, Speer, Streitaxt, Streitkolben, Rapier), Rüstungsstufen im Spiel, geheime Ausrüstungswahl, Wurfaxt, Ausweichrolle, Lobby-Einstellungen für Schaden-Regeln und Stimmung, Feintuning aller Werte nach echten Testkämpfen.
