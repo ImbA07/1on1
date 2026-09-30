@@ -20,6 +20,20 @@ if (new URLSearchParams(location.search).has('debug')) {
   (window as unknown as { __game: Game }).__game = game;
 }
 
+const ASSIST_KEY = '1on1.blockAssist';
+function saveAssist(on: boolean): void {
+  try {
+    localStorage.setItem(ASSIST_KEY, on ? '1' : '0');
+  } catch {
+    // nicht schlimm
+  }
+}
+try {
+  if (localStorage.getItem(ASSIST_KEY) === '0') game.setBlockAssist(false);
+} catch {
+  // Standard: an
+}
+
 const NAME_KEY = '1on1.name';
 function loadName(): string {
   try {
@@ -130,6 +144,11 @@ net.onMessage = (msg) => {
               onLeave: leaveRoom,
               onRematch: () => net.send({ t: 'rematch' }),
               practice: msg.practice,
+              blockAssist: game.getBlockAssist(),
+              onBlockAssist: (on) => {
+                game.setBlockAssist(on);
+                saveAssist(on);
+              },
             },
             msg.players,
             msg.youId,

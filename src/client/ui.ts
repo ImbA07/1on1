@@ -55,6 +55,8 @@ export interface HudHandlers {
   onLeave(): void;
   onRematch(): void;
   practice: boolean;
+  blockAssist: boolean;
+  onBlockAssist(on: boolean): void;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -311,6 +313,17 @@ export class UI {
       { class: 'card pause hidden' },
       h('h2', { class: 'heading' }, 'Menü'),
       h('p', { class: 'hint center' }, 'Der Kampf läuft weiter!'),
+      h(
+        'label',
+        { class: 'check' },
+        (() => {
+          const cb = h('input', { type: 'checkbox' });
+          cb.checked = handlers.blockAssist;
+          cb.addEventListener('change', () => handlers.onBlockAssist(cb.checked));
+          return cb;
+        })(),
+        h('span', {}, 'Block-Hilfe (deckt automatisch die Seite des Angriffs)'),
+      ),
       h('button', { class: 'btn primary', type: 'button', onClick: handlers.onResume }, 'Weiter'),
       handlers.practice ? null : h('button', { class: 'btn', type: 'button', onClick: handlers.onToLobby }, 'Zurück zur Lobby'),
       h('button', { class: 'btn link', type: 'button', onClick: handlers.onLeave }, handlers.practice ? 'Training beenden' : 'Raum verlassen'),
@@ -323,9 +336,9 @@ export class UI {
       h('span', {}, 'Linke Maustaste halten  ausholen'),
       h('span', {}, 'Maus dabei nach oben / links / rechts  Richtung'),
       h('span', {}, 'Taste loslassen  zuschlagen'),
-      h('span', {}, 'Rechte Maustaste halten  blocken'),
+      h('span', {}, 'Rechte Maustaste halten  blocken (Hilfe deckt die richtige Seite)'),
       h('span', {}, 'Block-Taste beim Ausholen  Finte'),
-      h('span', {}, 'Mausrad-Klick  Fokus auf Gegner'),
+      h('span', {}, 'Mausrad-Klick  Fokus an/aus (beim Kampfstart an)'),
       h('span', {}, 'Esc  Menü'),
     );
 

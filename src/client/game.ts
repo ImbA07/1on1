@@ -4,9 +4,10 @@ import { Fighter, angleLerp, newCombatPose, type CombatPose } from './fighter.js
 import type { Net } from './net.js';
 import type { NetEvent, NetMatch, PlayerInfo, ServerMessage } from '../shared/protocol.js';
 import { applyNet } from '../shared/netstate.js';
+import { DirectionPicker } from './direction.js';
 import { SPAWNS, TICK, newSimState, stepPlayer, type MoveInput, type SimState } from '../shared/sim.js';
 import { weaponOf, windupNeed } from '../shared/combat.js';
-import { Act, HP_MAX } from '../shared/weapons.js';
+import { Act, HP_MAX, counterDir } from '../shared/weapons.js';
 
 const FIGHTER_COLORS = [0xb3322b, 0x2b6cb3];
 const MOUSE_SENSITIVITY = 0.0022;
@@ -117,10 +118,13 @@ export class Game {
   private blkHeld = false;
   // Richtungswahl: Die Richtung folgt der letzten deutlichen Mausbewegung (kurzer Rueckblick),
   // waehrend die Kamera sich normal weiterdreht.
-  private motionX = 0;
-  private motionY = 0;
-  private motionAt = 0;
+  private readonly picker = new DirectionPicker();
   private selDir = 0;
+  private manualDirAt = -1e9; // wann die Richtung zuletzt bewusst per Maus gewechselt wurde
+  // Beim Kampfbeginn automatisch auf den Gegner ausrichten: Dann steuert die Maus nur die Richtung
+  private preferLock = true;
+  private blockAssist = true; // Lernhilfe: Block-Richtung folgt dem Angriff des Gegners
+  private prevPhase = '';
   private canAct = false;
   private matchKey = '';
   private matchRound = 0;
@@ -256,6 +260,13 @@ export class Game {
 
     // Kampf-Phase (Countdown/Kampf/Rundenende) und Ereignisse
     this.canAct = msg.match?.ph === 'fight';
+    const phase = msg.match?.ph ?? '';
+    if (phase === 'fight' && this.prevPhase !== 'fight' && this.preferLock && this.opp && !this.lockOn) {
+      // Kampfbeginn: Kamera auf den Gegner ausrichten, die Maus waehlt dann nur noch die Richtung
+      this.lockOn = true;
+      this.hud.onLockOn(true);
+    }
+    this.prevPhase = phase;
     this.matchPhase = msg.match?.ph ?? '';
     this.matchWinner = msg.match && msg.match.ld >= 0 ? (msg.match.ids[msg.match.ld] ?? '') : '';
     if (msg.match) {
@@ -346,7 +357,7 @@ export class Game {
       if (!this.lockOn) this.camYaw -= e.movementX * MOUSE_SENSITIVITY;
       this.lookPitch = clamp(this.lookPitch - e.movementY * MOUSE_SENSITIVITY, -0.85, 0.45);
       // ... und dieselbe Bewegung waehlt beim Angriff/Block die Richtung.
-      this.trackMotion(e.movementX, e.movementY);
+      this.picker.feed(e.movementX, e.movementY, performance.now());
       if (this.atkHeld || this.blkHeld) this.pickDirection();
     });
 
@@ -393,30 +404,29 @@ export class Game {
   private toggleLockOn(): void {
     if (!this.opp) return;
     this.lockOn = !this.lockOn;
+    this.preferLock = this.lockOn; // wer den Fokus abschaltet, will ihn auch in der naechsten Runde nicht
     this.hud.onLockOn(this.lockOn);
-  }
-
-  /** Merkt sich die letzten Mausbewegungen (klingen in ca. 0,18 s ab). */
-  private trackMotion(mx: number, my: number): void {
-    const now = performance.now();
-    const decay = Math.exp(-(now - this.motionAt) / 180);
-    this.motionX = this.motionX * decay + mx;
-    this.motionY = this.motionY * decay + my;
-    this.motionAt = now;
   }
 
   /**
    * Richtung aus der letzten deutlichen Mausbewegung: hoch = oben, links = links, rechts = rechts.
-   * Nach unten oder wenig Bewegung aendert nichts (die letzte Richtung bleibt).
+   * Kleine Bewegungen und Wischen nach unten aendern nichts (siehe direction.ts).
    */
   private pickDirection(): void {
-    const decay = Math.exp(-(performance.now() - this.motionAt) / 180);
-    const x = this.motionX * decay;
-    const y = this.motionY * decay;
-    const T = 14;
-    const ax = Math.abs(x);
-    if (-y > T && -y >= ax * 0.6) this.selDir = 0;
-    else if (ax > T && ax > Math.abs(y) * 0.8) this.selDir = x < 0 ? 1 : 2;
+    const now = performance.now();
+    const d = this.picker.pick(now, this.selDir);
+    if (d !== this.selDir) {
+      this.selDir = d;
+      this.manualDirAt = now;
+    }
+  }
+
+  /** Block-Hilfe an/aus (Lernhilfe). */
+  setBlockAssist(on: boolean): void {
+    this.blockAssist = on;
+  }
+  getBlockAssist(): boolean {
+    return this.blockAssist;
   }
 
   private readInput(): MoveInput {
@@ -428,7 +438,20 @@ export class Game {
     const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
     const right = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
-    return { fwd, right, yaw: this.camYaw, sprint, atk: this.atkHeld, blk: this.blkHeld, dir: this.selDir };
+    let dir = this.selDir;
+    // Block-Hilfe: Wer blockt und nicht gerade bewusst eine Richtung gewischt hat, deckt automatisch
+    // die Seite, aus der der Angriff des Gegners kommt (die Richtung ist ja fuer beide sichtbar).
+    const o = this.opp;
+    if (
+      this.blkHeld &&
+      this.blockAssist &&
+      o &&
+      (o.act === Act.WINDUP || o.act === Act.STRIKE) &&
+      performance.now() - this.manualDirAt > 450
+    ) {
+      dir = counterDir(o.dir);
+    }
+    return { fwd, right, yaw: this.camYaw, sprint, atk: this.atkHeld, blk: this.blkHeld, dir };
   }
 
   // ---------------------------------------------------------------- Schleife

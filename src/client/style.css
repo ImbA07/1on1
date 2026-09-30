@@ -680,3 +680,6 @@ body {
 .seg:disabled { cursor: default; opacity: 0.85; }
 .seg:disabled:not(.on) { opacity: 0.5; }
 .seg:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.check input { margin-top: 2px; width: 16px; height: 16px; accent-color: #a02d24; }

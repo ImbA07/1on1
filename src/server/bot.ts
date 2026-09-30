@@ -21,13 +21,19 @@ export interface BotConfig {
   reactionTicks: number; // Reaktionszeit
   attackEveryMin: number; // Ticks zwischen Angriffen
   attackEveryMax: number;
+  windupExtraMin: number; // Ticks, die die Puppe ueber das Minimum hinaus ausholt
+  windupExtraMax: number;
 }
 
+// Anfaenger-Puppe: greift seltener an, holt deutlich aus (gut lesbar), reagiert langsam
+// und blockt nur manchmal die richtige Seite.
 export const DEFAULT_BOT: BotConfig = {
-  blockChance: 0.4,
-  reactionTicks: 12,
-  attackEveryMin: 75,
-  attackEveryMax: 150,
+  blockChance: 0.3,
+  reactionTicks: 20,
+  attackEveryMin: 100,
+  attackEveryMax: 200,
+  windupExtraMin: 8,
+  windupExtraMax: 16,
 };
 
 type Plan =
@@ -106,7 +112,8 @@ export class BotBrain {
       let dir = Math.floor(this.rand() * 3);
       if (dir === this.lastDir) dir = (dir + 1 + Math.floor(this.rand() * 2)) % 3;
       this.lastDir = dir;
-      this.plan = { kind: 'wind', hold: w.windupMin + Math.floor(this.rand() * 8), dir };
+      const extra = this.cfg.windupExtraMin + Math.floor(this.rand() * (this.cfg.windupExtraMax - this.cfg.windupExtraMin + 1));
+      this.plan = { kind: 'wind', hold: w.windupMin + extra, dir };
     }
     if (this.plan.kind === 'wind') {
       input.dir = this.plan.dir;

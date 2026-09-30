@@ -85,8 +85,8 @@ export const WEAPONS: WeaponDef[] = [
     moveBlock: 0.55,
     feintCost: 8,
     feintRecovery: T(0.27),
-    redirectCost: 3,
-    redirectPenalty: 5,
+    redirectCost: 2,
+    redirectPenalty: 3,
   },
 ];
 
