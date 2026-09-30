@@ -142,12 +142,12 @@ test('Perfect Block: spaet aufgebaut, Angreifer taumelt', () => {
   assert.ok(parried || blocked, 'irgendein Block muss zaehlen');
   assert.ok(parried, 'spaeter Block = Perfect Block');
   assert.equal(d.b.sim.hp, HP_MAX);
-  assert.equal(d.b.sim.stamina, 100 - 0, 'Perfect Block kostet nichts');
+  assert.ok(d.b.sim.stamina > 100 - 16, 'Perfect Block kostet nur Aufbau und Halten, nichts fuer den Treffer');
 });
 
 test('Block ohne Ausdauer wird durchbrochen', () => {
   const d = duel();
-  d.b.sim.stamina = 3;
+  d.b.sim.stamina = 16; // reicht fuer Aufbau und Halten, aber nicht mehr fuer den Treffer
   attack(d, 0, () => ({ blk: true, dir: 0 }));
   assert.ok(d.events.some((e) => e.k === 'break'));
   assert.equal(d.b.sim.exhausted, true);
@@ -314,4 +314,42 @@ test('Fairness: ein Spieler mit Reaktionszeit 0,45 s blockt die Puppe meistens',
   const hits = events.filter((e) => e.k === 'hit' && e.d === 'P').length;
   assert.ok(attacksSeen >= 8, `genug Angriffe zum Auswerten (${attacksSeen})`);
   assert.ok(blocked / (blocked + hits) >= 0.7, `geblockt ${blocked}, getroffen ${hits}`);
+});
+
+test('Block halten kostet dauernd Ausdauer, irgendwann faellt der Block', () => {
+  const d = duel(5);
+  const start = d.b.sim.stamina;
+  d.steps(60, {}, { blk: true, dir: 0 });
+  assert.ok(d.b.sim.stamina < start - 12, 'Dauerblocken kostet spuerbar');
+  d.steps(600, {}, { blk: true, dir: 0 });
+  assert.notEqual(d.b.sim.act, Act.BLOCK, 'mit leerer Ausdauer haelt der Block nicht');
+});
+
+test('Richtung beim Blocken wechseln dauert deutlich laenger und kostet Ausdauer', () => {
+  const d = duel(5);
+  d.steps(20, {}, { blk: true, dir: 0 });
+  assert.ok(d.b.sim.actT >= W.blockRaise, 'Block steht');
+  const st = d.b.sim.stamina;
+  d.step({}, { blk: true, dir: 1 });
+  assert.equal(d.b.sim.dir, 1);
+  assert.ok(d.b.sim.actT < W.blockRaise, 'Block muss neu aufgebaut werden');
+  assert.ok(d.b.sim.stamina < st - 5, 'Wechsel kostet Ausdauer');
+  // erst nach der langen Wartezeit wirkt er wieder
+  let ticks = 0;
+  while (d.b.sim.actT < W.blockRaise && ticks < 60) {
+    d.step({}, { blk: true, dir: 1 });
+    ticks++;
+  }
+  assert.ok(ticks >= W.blockRedirectRaise - 2, `Wiederaufbau nach ${ticks} Ticks`);
+});
+
+test('Ausfallschritt und Rueckstoss bewegen die Figuren', () => {
+  const d = duel(1.7);
+  const z0 = d.a.sim.z;
+  attack(d, 0);
+  assert.ok(d.a.sim.z < z0 - 0.15 || d.b.sim.hp < HP_MAX, 'Angreifer springt nach vorn');
+  // B wurde getroffen und ein Stueck weggestossen
+  assert.ok(d.b.sim.z < -1.7 - 0.2, `Rueckstoss: B steht bei z=${d.b.sim.z.toFixed(2)}`);
+  d.steps(30, {}, {});
+  assert.ok(d.b.sim.kx === 0 && d.b.sim.kz === 0, 'Rueckstoss ist abgeklungen');
 });

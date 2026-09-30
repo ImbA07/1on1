@@ -71,7 +71,7 @@ export function stepCombat(p: SimState, input: MoveInput, canAct: boolean): Comb
         p.act = Act.BLOCK;
         p.dir = dir;
         p.actT = 0;
-        spendStamina(p, 2);
+        spendStamina(p, 4);
       } else if (atkEdge && p.stamina > 0) {
         startWindup(p, w, dir);
       }
@@ -130,12 +130,16 @@ export function stepCombat(p: SimState, input: MoveInput, canAct: boolean): Comb
         startWindup(p, w, dir);
       } else {
         p.actT++;
+        // Den Block zu halten kostet dauernd Ausdauer: Dauerblocken geht nicht
+        spendStamina(p, w.blockHoldDrain);
         if (dir !== p.dir) {
-          // Blockrichtung wechseln: Block muss neu aufgebaut werden
+          // Richtung wechseln: Der Block muss deutlich laenger neu aufgebaut werden und kostet Ausdauer.
+          // (Negativer Zaehler = laengere Wartezeit, bis actT wieder blockRaise erreicht.)
           p.dir = dir;
-          p.actT = 0;
-          spendStamina(p, 2);
+          p.actT = w.blockRaise - w.blockRedirectRaise;
+          spendStamina(p, w.blockRedirectCost);
         }
+        if (p.stamina <= 0) applyStagger(p, 12); // Arme muede: Block faellt
       }
       break;
     }
@@ -168,7 +172,7 @@ export function stepCombat(p: SimState, input: MoveInput, canAct: boolean): Comb
       break;
     case Act.BLOCK:
       moveMult = w.moveBlock;
-      regenScale = 0.5;
+      regenScale = 0;
       break;
     case Act.STAGGER:
       moveMult = 0;

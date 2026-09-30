@@ -68,6 +68,8 @@ export interface NetPlayerState {
   hd: boolean; // aktueller Schlag hat schon getroffen/wurde geblockt
   pa: boolean; // Taste-Zustand des letzten Ticks
   pb: boolean;
+  kx: number; // Rueckstoss
+  kz: number;
   hp?: number; // nur im eigenen Eintrag: Lebenspunkte (kein Balken, nur fuer Effekte)
 }
 

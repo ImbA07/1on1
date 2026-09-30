@@ -46,6 +46,15 @@ export function zoneFor(attackDir: number, defender: SimState): number {
   return Zone.TORSO;
 }
 
+/** Stoesst `target` von `from` weg (Geschwindigkeit in m/s, klingt in der Simulation ab). */
+function push(from: SimState, target: SimState, speed: number): void {
+  const dx = target.x - from.x;
+  const dz = target.z - from.z;
+  const d = Math.hypot(dx, dz) || 1;
+  target.kx += (dx / d) * speed;
+  target.kz += (dz / d) * speed;
+}
+
 function revive(f: Fighter, events: NetEvent[]): void {
   f.sim.down = false;
   f.sim.downT = 0;
@@ -109,6 +118,7 @@ export function resolveStrikes(
       const perfect = ds.actT - dw.blockRaise < dw.perfectWindow;
       if (perfect) {
         applyStagger(as, w.parryStagger);
+        push(ds, as, w.pushParry);
         stats[1 - i]!.parries++;
         stats[1 - i]!.blocks++;
         events.push({ k: 'parry', a: a.id, d: d.id });
@@ -117,8 +127,10 @@ export function resolveStrikes(
         stats[1 - i]!.blocks++;
         events.push({ k: 'block', a: a.id, d: d.id });
         spendStamina(ds, w.staminaOnBlocked * dw.blockFactor);
+        push(as, ds, w.pushBlock);
         if (ds.stamina <= 0) {
           applyStagger(ds, GUARD_BREAK_STAGGER);
+          push(as, ds, w.pushBreak - w.pushBlock);
           events.push({ k: 'break', d: d.id });
         }
       }
@@ -141,6 +153,7 @@ export function resolveStrikes(
     stats[i]!.zones[zone]!++;
     stats[1 - i]!.taken += dmg;
 
+    push(as, ds, w.pushHit * (zone === Zone.HEAD ? 1.15 : 1));
     // Nachwirkungen
     if (zone === Zone.HEAD) ds.dazeT = HEAD_DAZE;
     else if (zone === Zone.ARM) ds.armT = ARM_DEBUFF;

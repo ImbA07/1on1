@@ -589,7 +589,7 @@ body {
   transition: opacity 0.15s;
   pointer-events: none;
 }
-.ring.idle:not(.hinting):not(.held) { opacity: 0.32; }
+.ring.idle:not(.held) { opacity: 0.32; }
 .ring-svg { width: 100%; display: block; overflow: visible; }
 .ring.off { opacity: 0.35; }
 .wedge {

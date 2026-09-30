@@ -2,7 +2,7 @@
 // Client (Vorhersage, damit sich die eigene Figur sofort anfuehlt) benutzt.
 // WICHTIG: Beide muessen exakt dasselbe rechnen, sonst "ruckelt" die Figur.
 
-import { stepCombat } from './combat.js';
+import { stepCombat, weaponOf } from './combat.js';
 import { Act, HP_MAX } from './weapons.js';
 
 export const TICK_RATE = 30;
@@ -22,6 +22,7 @@ export const STAMINA_REGEN = 18; // pro Sekunde
 export const STAMINA_REGEN_MOVING_FACTOR = 0.6;
 export const REGEN_DELAY = 0.9; // Pause nach dem Rennen, bevor Ausdauer zurueckkommt
 export const EXHAUST_RECOVER = 30; // ab hier darf man nach Erschoepfung wieder rennen
+export const KNOCKBACK_DECAY = 0.8; // pro Tick
 
 // Startplaetze der beiden Spieler (einander zugewandt)
 export const SPAWNS = [
@@ -54,6 +55,8 @@ export interface SimState {
   prevBlk: boolean;
   weapon: number;
   armor: number;
+  kx: number; // Rueckstoss-Geschwindigkeit (klingt ab)
+  kz: number;
 
   // Nur fuer Animation, nicht verbindlich:
   vx: number;
@@ -95,6 +98,8 @@ export function newSimState(x: number, z: number, yaw: number): SimState {
     prevBlk: false,
     weapon: 0,
     armor: 0,
+    kx: 0,
+    kz: 0,
     vx: 0,
     vz: 0,
     sprinting: false,
@@ -168,6 +173,24 @@ export function stepPlayer(
   p.vz = (fz * fwd + rz * right) * speed * factor;
   p.x += p.vx * TICK;
   p.z += p.vz * TICK;
+
+  // Ausfallschritt: Beim Schlag springt die Figur ein Stueck nach vorn
+  if (p.act === Act.STRIKE && !p.down) {
+    const lunge = weaponOf(p).lungeSpeed;
+    p.x += fx_ * lunge * TICK;
+    p.z += fz * lunge * TICK;
+  }
+  // Rueckstoss (nach Treffer, Block oder Parade), klingt schnell ab
+  if (p.kx !== 0 || p.kz !== 0) {
+    p.x += p.kx * TICK;
+    p.z += p.kz * TICK;
+    p.kx *= KNOCKBACK_DECAY;
+    p.kz *= KNOCKBACK_DECAY;
+    if (Math.abs(p.kx) < 0.05 && Math.abs(p.kz) < 0.05) {
+      p.kx = 0;
+      p.kz = 0;
+    }
+  }
   p.yaw = input.yaw;
   p.sprinting = sprinting;
 

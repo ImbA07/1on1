@@ -1,6 +1,6 @@
 import type { NetEvent, NetMatch, PlayerInfo, Phase, RoomSettings } from '../shared/protocol.js';
 import { MAX_NAME_LENGTH } from '../shared/protocol.js';
-import { Act, ZONE_NAMES, counterDir } from '../shared/weapons.js';
+import { Act, ZONE_NAMES } from '../shared/weapons.js';
 import type { CombatView } from './game.js';
 
 export interface RoomView {
@@ -55,8 +55,6 @@ export interface HudHandlers {
   onLeave(): void;
   onRematch(): void;
   practice: boolean;
-  blockAssist: boolean;
-  onBlockAssist(on: boolean): void;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -92,7 +90,6 @@ export class UI {
 
   // Kampf-Anzeigen
   private wedges: SVGPathElement[] = [];
-  private hints: SVGPathElement[] = [];
   private ring: HTMLElement | null = null;
   private ringLabel: HTMLElement | null = null;
   private vignette: HTMLElement | null = null;
@@ -313,17 +310,6 @@ export class UI {
       { class: 'card pause hidden' },
       h('h2', { class: 'heading' }, 'Menü'),
       h('p', { class: 'hint center' }, 'Der Kampf läuft weiter!'),
-      h(
-        'label',
-        { class: 'check' },
-        (() => {
-          const cb = h('input', { type: 'checkbox' });
-          cb.checked = handlers.blockAssist;
-          cb.addEventListener('change', () => handlers.onBlockAssist(cb.checked));
-          return cb;
-        })(),
-        h('span', {}, 'Block-Hilfe (deckt automatisch die Seite des Angriffs)'),
-      ),
       h('button', { class: 'btn primary', type: 'button', onClick: handlers.onResume }, 'Weiter'),
       handlers.practice ? null : h('button', { class: 'btn', type: 'button', onClick: handlers.onToLobby }, 'Zurück zur Lobby'),
       h('button', { class: 'btn link', type: 'button', onClick: handlers.onLeave }, handlers.practice ? 'Training beenden' : 'Raum verlassen'),
@@ -336,25 +322,19 @@ export class UI {
       h('span', {}, 'Linke Maustaste halten  ausholen'),
       h('span', {}, 'Maus dabei nach oben / links / rechts  Richtung'),
       h('span', {}, 'Taste loslassen  zuschlagen'),
-      h('span', {}, 'Rechte Maustaste halten  blocken (Hilfe deckt die richtige Seite)'),
+      h('span', {}, 'Rechte Maustaste halten  blocken'),
       h('span', {}, 'Block-Taste beim Ausholen  Finte'),
-      h('span', {}, 'Mausrad-Klick  Fokus an/aus (beim Kampfstart an)'),
+      h('span', {}, 'Mausrad-Klick  Fokus an/aus (beim Start an)'),
       h('span', {}, 'Esc  Menü'),
     );
 
     // Richtungsring: zeigt gewaehlte Richtung und Zustand von Angriff/Block
     const ringSvg = svg('svg', { viewBox: '0 0 100 100', class: 'ring-svg', 'aria-hidden': 'true' });
     this.wedges = [];
-    this.hints = [];
     WEDGE_CENTERS.forEach((c, i) => {
       const w = svg('path', { class: `wedge w${i}`, d: sectorPath(50, 50, 20, 40, c - 33, c + 33) });
       ringSvg.append(w);
       this.wedges.push(w);
-    });
-    WEDGE_CENTERS.forEach((c, i) => {
-      const hnt = svg('path', { class: `hint-arc h${i}`, d: sectorPath(50, 50, 42.5, 47, c - 33, c + 33) });
-      ringSvg.append(hnt);
-      this.hints.push(hnt);
     });
     ringSvg.append(svg('circle', { cx: '50', cy: '50', r: '3', class: 'ring-dot' }));
     this.ringLabel = h('div', { class: 'ring-label' });
@@ -416,14 +396,12 @@ export class UI {
     const prog = v.act === Act.WINDUP ? Math.min(1, v.actT / Math.max(1, v.need)) : 0;
     const state =
       v.act === Act.WINDUP ? 'wind' : v.act === Act.STRIKE ? 'strike' : v.act === Act.RECOVERY ? 'recover' : v.act === Act.BLOCK ? 'block' : v.act === Act.STAGGER ? 'stagger' : 'idle';
-    const oppHint = v.oppAct === Act.WINDUP ? counterDir(v.oppDir) : -1;
-    const key = `${state}|${shown}|${prog.toFixed(2)}|${v.atkHeld ? 1 : 0}${v.blkHeld ? 1 : 0}|${oppHint}|${v.canAct ? 1 : 0}`;
+    const key = `${state}|${shown}|${prog.toFixed(2)}|${v.atkHeld ? 1 : 0}${v.blkHeld ? 1 : 0}|${v.canAct ? 1 : 0}`;
     if (key !== this.lastRingKey) {
       this.lastRingKey = key;
-      this.ring.className = `ring ${state}${v.canAct ? '' : ' off'}${oppHint >= 0 ? ' hinting' : ''}${v.atkHeld || v.blkHeld ? ' held' : ''}`;
+      this.ring.className = `ring ${state}${v.canAct ? '' : ' off'}${v.atkHeld || v.blkHeld ? ' held' : ''}`;
       this.ring.style.setProperty('--p', prog.toFixed(2));
       this.wedges.forEach((w, i) => w.classList.toggle('sel', i === shown));
-      this.hints.forEach((a, i) => a.classList.toggle('on', i === oppHint));
       this.ringLabel!.textContent =
         state === 'wind' ? (prog >= 1 ? 'Bereit: loslassen' : 'Ausholen') : state === 'block' ? 'Block' : state === 'stagger' ? 'Taumeln' : '';
     }
@@ -584,7 +562,6 @@ export class UI {
     this.bigEl = null;
     this.endCard = null;
     this.wedges = [];
-    this.hints = [];
     this.staminaFill = null;
     this.staminaBox = null;
     this.lockBadge = null;

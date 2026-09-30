@@ -7,7 +7,7 @@ import { applyNet } from '../shared/netstate.js';
 import { DirectionPicker } from './direction.js';
 import { SPAWNS, TICK, newSimState, stepPlayer, type MoveInput, type SimState } from '../shared/sim.js';
 import { weaponOf, windupNeed } from '../shared/combat.js';
-import { Act, HP_MAX, counterDir } from '../shared/weapons.js';
+import { Act, HP_MAX } from '../shared/weapons.js';
 
 const FIGHTER_COLORS = [0xb3322b, 0x2b6cb3];
 const MOUSE_SENSITIVITY = 0.0022;
@@ -123,7 +123,6 @@ export class Game {
   private manualDirAt = -1e9; // wann die Richtung zuletzt bewusst per Maus gewechselt wurde
   // Beim Kampfbeginn automatisch auf den Gegner ausrichten: Dann steuert die Maus nur die Richtung
   private preferLock = true;
-  private blockAssist = true; // Lernhilfe: Block-Richtung folgt dem Angriff des Gegners
   private prevPhase = '';
   private canAct = false;
   private matchKey = '';
@@ -421,14 +420,6 @@ export class Game {
     }
   }
 
-  /** Block-Hilfe an/aus (Lernhilfe). */
-  setBlockAssist(on: boolean): void {
-    this.blockAssist = on;
-  }
-  getBlockAssist(): boolean {
-    return this.blockAssist;
-  }
-
   private readInput(): MoveInput {
     // Vor dem Kampf (Countdown) und nach der Runde bleibt die Figur stehen
     if (!this.canAct) {
@@ -438,19 +429,7 @@ export class Game {
     const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
     const right = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
-    let dir = this.selDir;
-    // Block-Hilfe: Wer blockt und nicht gerade bewusst eine Richtung gewischt hat, deckt automatisch
-    // die Seite, aus der der Angriff des Gegners kommt (die Richtung ist ja fuer beide sichtbar).
-    const o = this.opp;
-    if (
-      this.blkHeld &&
-      this.blockAssist &&
-      o &&
-      (o.act === Act.WINDUP || o.act === Act.STRIKE) &&
-      performance.now() - this.manualDirAt > 450
-    ) {
-      dir = counterDir(o.dir);
-    }
+    const dir = this.selDir;
     return { fwd, right, yaw: this.camYaw, sprint, atk: this.atkHeld, blk: this.blkHeld, dir };
   }
 

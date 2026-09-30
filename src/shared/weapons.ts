@@ -48,13 +48,21 @@ export interface WeaponDef {
   staminaHold: number; // Ausdauer pro Tick beim laengeren Halten des Ausholens
   staminaOnBlocked: number; // Ausdauer, die ein geblockter Schlag dem Blockenden kostet
   blockFactor: number; // Ausdauer-Kosten beim Blocken MIT dieser Waffe (Schild = wenig)
-  blockRaise: number; // Ticks, bis der Block wirkt
+  blockRaise: number; // Ticks, bis der Block nach dem Druecken wirkt
+  blockRedirectRaise: number; // Ticks, bis er nach einem Richtungswechsel wieder wirkt (deutlich laenger)
+  blockRedirectCost: number; // Ausdauer fuer einen Richtungswechsel
+  blockHoldDrain: number; // Ausdauer pro Tick, solange man den Block haelt (Dauerblocken geht nicht)
   perfectWindow: number; // Ticks nach Block-Aufbau, in denen ein Treffer ein Perfect Block ist
   parryStagger: number; // Ticks, die der Angreifer nach einem Perfect Block taumelt
   moveWindup: number; // Lauftempo-Faktor in den Phasen
   moveStrike: number;
   moveRecovery: number;
   moveBlock: number;
+  lungeSpeed: number; // Ausfallschritt nach vorn waehrend des Schlags (m/s)
+  pushHit: number; // Rueckstoss (m/s, klingt ab) fuer den Getroffenen
+  pushBlock: number; // ... fuer den Blockenden
+  pushParry: number; // ... fuer den Angreifer nach einem Perfect Block
+  pushBreak: number; // ... fuer den Blockenden bei durchbrochenem Block
   feintCost: number;
   feintRecovery: number;
   redirectCost: number; // Richtung waehrend des Ausholens wechseln
@@ -65,10 +73,10 @@ export const WEAPONS: WeaponDef[] = [
   {
     id: 'swordShield',
     name: 'Schwert & Schild',
-    windupMin: T(0.5),
+    windupMin: T(0.45),
     windupMax: T(1.2),
     strikeTicks: T(0.13),
-    recovery: T(0.4),
+    recovery: T(0.35),
     reach: 2.1,
     arc: 0.7,
     damage: 24,
@@ -76,13 +84,21 @@ export const WEAPONS: WeaponDef[] = [
     staminaHold: 0.17,
     staminaOnBlocked: 20,
     blockFactor: 0.5,
-    blockRaise: 4,
+    blockRaise: 6,
+    blockRedirectRaise: T(0.37),
+    blockRedirectCost: 6,
+    blockHoldDrain: 0.25,
     perfectWindow: 5,
     parryStagger: T(0.8),
     moveWindup: 0.55,
     moveStrike: 0.25,
     moveRecovery: 0.6,
     moveBlock: 0.55,
+    lungeSpeed: 3.6,
+    pushHit: 3.0,
+    pushBlock: 1.8,
+    pushParry: 4.2,
+    pushBreak: 3.6,
     feintCost: 8,
     feintRecovery: T(0.27),
     redirectCost: 2,

@@ -29,6 +29,8 @@ export function simToNet(id: string, s: SimState, ack: number, ownHp: boolean): 
     hd: s.hitDone,
     pa: s.prevAtk,
     pb: s.prevBlk,
+    kx: r3(s.kx),
+    kz: r3(s.kz),
   };
   if (ownHp) n.hp = s.hp;
   return n;
@@ -56,5 +58,7 @@ export function applyNet(s: SimState, n: NetPlayerState): void {
   s.hitDone = n.hd;
   s.prevAtk = n.pa;
   s.prevBlk = n.pb;
+  s.kx = n.kx;
+  s.kz = n.kz;
   if (n.hp !== undefined) s.hp = n.hp;
 }
