@@ -162,7 +162,7 @@ test('Eingaben bewegen die Figur, Server bestaetigt mit ack', async () => {
     await b.waitFor('room');
     a.send({ t: 'start' });
     await a.waitFor('room', (m) => m.phase === 'arena');
-    await a.waitFor('state');
+    await a.waitFor('state', (m) => m.match?.ph === 'fight', 6000); // erst nach dem Countdown darf man sich bewegen
 
     // 10 Schritte nach vorne (yaw 0 = -z), im Takt gesendet wie ein echter Client. A startet bei z = 6.
     for (let seq = 1; seq <= 10; seq++) {
@@ -201,6 +201,7 @@ test('Eingaben-Flut macht nicht schneller (kein Speed-Hack, kein Teleport)', asy
     await b.waitFor('room');
     a.send({ t: 'start' });
     await a.waitFor('room', (m) => m.phase === 'arena');
+    await a.waitFor('state', (m) => m.match?.ph === 'fight', 6000);
 
     // 200 Sprint-Eingaben auf einmal (= 6,7 Sekunden Bewegung in wenigen Millisekunden)
     for (let seq = 1; seq <= 200; seq++) {
@@ -335,5 +336,56 @@ test('Lobby-Einstellung: nur der Ersteller stellt die Rundenzahl ein', async () 
     assert.equal(st.match!.rw, 1, 'Best of 1 = ein Sieg reicht');
     a.close();
     b.close();
+  });
+});
+
+test('Im Countdown bleiben beide Figuren stehen', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    a.send({ t: 'create', name: 'Solo', practice: true });
+    const room = await a.waitFor('room');
+    await a.waitFor('state', (m) => m.match?.ph === 'countdown');
+    for (let seq = 1; seq <= 12; seq++) {
+      a.send({ t: 'input', seq, fwd: 1, right: 0, yaw: 0, sprint: false, atk: false, blk: false, dir: 0 });
+      await new Promise((r) => setTimeout(r, 34));
+    }
+    const st = await a.waitFor('state', (m) => m.match?.ph === 'countdown' && (m.players.find((p) => p.id === room.youId)?.ack ?? 0) >= 10);
+    const me = st.players.find((p) => p.id === room.youId)!;
+    assert.equal(me.z, 6, 'Startplatz unveraendert');
+    a.close();
+  });
+});
+
+test('Ersteller bleibt Ersteller, wenn er mit seinem Schluessel neu beitritt', async () => {
+  await withServer(async (game) => {
+    const a = await connect(game);
+    const b = await connect(game);
+    a.send({ t: 'create', name: 'Ersteller' });
+    const room = await a.waitFor('room');
+    assert.ok(room.hostKey, 'der Ersteller bekommt einen Schluessel');
+    b.send({ t: 'join', code: room.code, name: 'Gast' });
+    const bRoom = await b.waitFor('room');
+    assert.equal(bRoom.hostKey, undefined, 'der Gast bekommt keinen');
+
+    // Ersteller verlaesst (z. B. Seite neu geladen): Gast wird Ersteller
+    a.close();
+    const promoted = await b.waitFor('room', (m) => m.players.length === 1 && m.hostId === m.youId);
+    assert.ok(promoted.hostKey, 'der neue Ersteller bekommt einen Schluessel');
+
+    // Ersteller kommt mit seinem alten Schluessel zurueck und ist wieder Ersteller
+    const a2 = await connect(game);
+    a2.send({ t: 'join', code: room.code, name: 'Ersteller', key: room.hostKey });
+    const back = await a2.waitFor('room');
+    assert.equal(back.hostId, back.youId);
+    const bAfter = await b.waitFor('room', (m) => m.players.length === 2 && m.hostId !== m.youId);
+    assert.notEqual(bAfter.hostId, bAfter.youId);
+
+    // Falscher Schluessel hilft nicht
+    const c = await connect(game);
+    c.send({ t: 'join', code: room.code, name: 'Fremder', key: 'falsch' });
+    assert.match((await c.waitFor('error')).message, /voll/);
+    a2.close();
+    b.close();
+    c.close();
   });
 });

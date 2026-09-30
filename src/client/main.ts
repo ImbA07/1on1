@@ -36,6 +36,22 @@ function saveName(name: string): void {
   }
 }
 
+// Ersteller-Schluessel: bleibt beim Neuladen der Seite erhalten, damit man Ersteller bleibt
+function loadHostKey(code: string): string | undefined {
+  try {
+    return sessionStorage.getItem(`1on1.hk.${code}`) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function saveHostKey(code: string, key: string): void {
+  try {
+    sessionStorage.setItem(`1on1.hk.${code}`, key);
+  } catch {
+    // nicht schlimm
+  }
+}
+
 const inviteMatch = location.pathname.match(/^\/r\/([A-Za-z0-9]+)/);
 let inviteCode: string | null = inviteMatch ? normalizeCode(inviteMatch[1]) : null;
 
@@ -53,7 +69,7 @@ function showMenu(error?: string): void {
     error,
     onCreate: (name) => connectAnd(name, { t: 'create', name }),
     onPractice: (name) => connectAnd(name, { t: 'create', name, practice: true }),
-    onJoin: (code, name) => connectAnd(name, { t: 'join', code, name }),
+    onJoin: (code, name) => connectAnd(name, { t: 'join', code, name, key: loadHostKey(code) }),
     onOwnGame: () => {
       inviteCode = null;
       history.replaceState(null, '', '/');
@@ -62,7 +78,7 @@ function showMenu(error?: string): void {
   });
 }
 
-async function connectAnd(name: string, first: { t: 'create'; name: string; practice?: boolean } | { t: 'join'; code: string; name: string }): Promise<void> {
+async function connectAnd(name: string, first: { t: 'create'; name: string; practice?: boolean } | { t: 'join'; code: string; name: string; key?: string }): Promise<void> {
   if (connecting) return;
   connecting = true;
   saveName(name);
@@ -97,6 +113,7 @@ net.onMessage = (msg) => {
   switch (msg.t) {
     case 'room': {
       room = msg;
+      if (msg.hostKey) saveHostKey(msg.code, msg.hostKey);
       // Trainingsraeume haben keinen Einladungslink
       if (!msg.practice) {
         if (location.pathname !== `/r/${msg.code}`) history.replaceState(null, '', `/r/${msg.code}`);

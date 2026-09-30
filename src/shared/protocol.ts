@@ -25,7 +25,7 @@ export interface PlayerInfo {
 // ---- Client -> Server ----
 export type ClientMessage =
   | { t: 'create'; name: string; practice?: boolean } // practice = Training gegen die Puppe
-  | { t: 'join'; code: string; name: string }
+  | { t: 'join'; code: string; name: string; key?: string } // key: Ersteller-Schluessel (beim Neuladen wieder Ersteller werden)
   | { t: 'start' } // nur der Ersteller
   | { t: 'settings'; rounds: number } // nur der Ersteller, nur in der Lobby: 1, 3 oder 5 (Best of ...)
   | { t: 'toLobby' } // zurueck in die Lobby
@@ -115,6 +115,7 @@ export type ServerMessage =
       players: PlayerInfo[];
       practice: boolean;
       settings: RoomSettings;
+      hostKey?: string; // nur an den Ersteller: damit er nach Neuladen wieder Ersteller wird
     }
   | { t: 'state'; tk: number; players: NetPlayerState[]; ev: NetEvent[]; match: NetMatch | null }
   | { t: 'error'; message: string }

@@ -60,6 +60,7 @@ interface Room {
   match: Match | null;
   tick: number;
   settings: RoomSettings;
+  hostKey: string; // geheim, gehoert dem Ersteller
 }
 
 function send(ws: WebSocket | null, msg: ServerMessage): void {
@@ -80,7 +81,7 @@ export class RoomManager {
       case 'create':
         return this.create(ws, msg.name, msg.practice === true);
       case 'join':
-        return this.join(ws, msg.code, msg.name);
+        return this.join(ws, msg.code, msg.name, msg.key);
       case 'start':
         return this.start(ws);
       case 'settings':
@@ -159,7 +160,8 @@ export class RoomManager {
     const match = room.match!;
     const events: NetEvent[] = [];
     const fighters = room.players.map((p) => ({ id: p.id, sim: p.sim })) as [Fighter, Fighter];
-    const frozen = match.phase === 'roundEnd' || match.phase === 'matchEnd';
+    // Nur im Kampf darf man sich bewegen (nicht im Countdown, nicht nach der Runde)
+    const frozen = match.phase !== 'fight';
 
     room.tick++;
     room.players.forEach((p, i) => {
@@ -225,6 +227,7 @@ export class RoomManager {
       match: null,
       tick: 0,
       settings: { ...DEFAULT_SETTINGS },
+      hostKey: randomUUID().replace(/-/g, ''),
     };
     this.rooms.set(room.code, room);
     this.addPlayer(room, ws, rawName);
@@ -236,16 +239,18 @@ export class RoomManager {
     this.broadcastRoom(room);
   }
 
-  private join(ws: WebSocket, rawCode: string, rawName: string): void {
+  private join(ws: WebSocket, rawCode: string, rawName: string, key?: string): void {
     if (this.byWs.has(ws)) return send(ws, { t: 'error', message: 'Du bist schon in einem Raum.' });
     const room = this.rooms.get(normalizeCode(rawCode));
     if (!room || room.practice) return send(ws, { t: 'error', message: 'Diesen Raum gibt es nicht (mehr). Bitte einen neuen Link holen.' });
     if (room.players.length >= MAX_PLAYERS) return send(ws, { t: 'error', message: 'Der Raum ist schon voll.' });
     room.emptySince = null;
-    this.addPlayer(room, ws, rawName);
+    const joined = this.addPlayer(room, ws, rawName);
     if (room.hostId === '' || !room.players.some((p) => p.id === room.hostId)) {
       room.hostId = room.players[0]!.id;
     }
+    // Wer den geheimen Schluessel des Erstellers mitbringt (z. B. nach Neuladen), ist wieder Ersteller
+    if (typeof key === 'string' && key.length > 0 && key === room.hostKey) room.hostId = joined.id;
     this.broadcastRoom(room);
   }
 
@@ -375,6 +380,7 @@ export class RoomManager {
         players,
         practice: room.practice,
         settings: room.settings,
+        ...(p.id === room.hostId ? { hostKey: room.hostKey } : {}),
       });
     }
   }

@@ -418,6 +418,10 @@ export class Game {
   }
 
   private readInput(): MoveInput {
+    // Vor dem Kampf (Countdown) und nach der Runde bleibt die Figur stehen
+    if (!this.canAct) {
+      return { fwd: 0, right: 0, yaw: this.camYaw, sprint: false, atk: false, blk: false, dir: this.selDir };
+    }
     const k = this.keys;
     const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
     const right = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
