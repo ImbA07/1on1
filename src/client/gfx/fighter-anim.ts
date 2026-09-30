@@ -27,7 +27,7 @@ function wrapAngle(a: number): number {
 }
 
 /** Gedaempfte Feder (fuer Nachwippen). */
-class Spring {
+export class Spring {
   x = 0;
   v = 0;
   constructor(
@@ -146,6 +146,17 @@ export interface AnimMods {
   shieldGrip: boolean;
   /** 0..1: Waffenhand greift fester (Ausholen/Schlag) */
   gripTension: number;
+  /** Ziel-Versatz der Fuesse (Figurenraum, zusaetzlich zur Grundstellung) [links, rechts] */
+  footTX: Float32Array;
+  footTZ: Float32Array;
+  /** dieser Fuss bleibt stehen (kein Nachsetzen), z. B. Standbein im Ausfallschritt; -1 = keiner */
+  holdFoot: number;
+  /** sofort einen Schritt ausloesen (wird vom Animator zurueckgesetzt) */
+  stepNow: [boolean, boolean];
+  /** Dauer eines erzwungenen Schritts (s) */
+  stepNowDur: number;
+  /** kleine Tippel-/Korrekturschritte im Stand erlaubt */
+  idleShuffle: boolean;
 }
 
 export function newAnimMods(): AnimMods {
@@ -169,7 +180,26 @@ export function newAnimMods(): AnimMods {
     limp: 0,
     shieldGrip: false,
     gripTension: 0,
+    footTX: new Float32Array(2),
+    footTZ: new Float32Array(2),
+    holdFoot: -1,
+    stepNow: [false, false],
+    stepNowDur: 0.16,
+    idleShuffle: true,
   };
+}
+
+/** Aufgesetzter Fuss: bleibt in der Welt stehen und setzt mit kleinen Schritten nach. */
+interface Plant {
+  cx: number; // aktueller Versatz (Figurenraum)
+  cz: number;
+  sx: number; // Startpunkt des laufenden Schritts
+  sz: number;
+  stepT: number; // Zeit im Schritt, -1 = steht
+  dur: number;
+  h: number;
+  jx: number; // Zufalls-Versatz fuer lebendiges Stehen
+  jz: number;
 }
 
 // Kniend (rechtes Knie am Boden): Fussziele und Becken, Figurenraum
@@ -209,6 +239,16 @@ export class FighterAnimator {
   private readonly swordSpring = new Spring(90, 0.35);
   private prevLvz = 0;
   private first = true;
+  private readonly plants: [Plant, Plant] = [
+    { cx: 0, cz: 0, sx: 0, sz: 0, stepT: -1, dur: 0.2, h: 0, jx: 0, jz: 0 },
+    { cx: 0, cz: 0, sx: 0, sz: 0, stepT: -1, dur: 0.2, h: 0, jx: 0, jz: 0 },
+  ];
+  private rootDX = 0;
+  private rootDZ = 0;
+  private shuffleT = 1 + Math.random() * 2;
+  private shuffleFoot = 0;
+  /** 0..1 wie stark die Fuesse gerade rutschen (Rueckstoss) */
+  slide = 0;
   private readonly feet: [FootState, FootState] = [
     { x: 0, z: 0, lift: 0, pitch: 0, yaw: 0, toe: 0 },
     { x: 0, z: 0, lift: 0, pitch: 0, yaw: 0, toe: 0 },
@@ -250,6 +290,15 @@ export class FighterAnimator {
     this.handRigL = new HandRig(digits('L'), 'L');
     this.handRigR = new HandRig(digits('R'), 'R');
     this.grip = gripPose();
+  }
+
+  /**
+   * Tatsaechliche Verschiebung der Figur seit dem letzten Bild (Figurenraum, Meter), inklusive
+   * Ausfallschritt und Rueckstoss. Aufgesetzte Fuesse bleiben dadurch in der Welt stehen.
+   */
+  setRootDelta(dx: number, dz: number): void {
+    this.rootDX = dx;
+    this.rootDZ = dz;
   }
 
   /** Blickrichtung neu uebernehmen (kein Nachziehen der Beine), z. B. nach dem Aufstellen. */
@@ -384,9 +433,11 @@ export class FighterAnimator {
       st.yaw = lerp(idleYaw, moveYaw, nb);
     }
 
-    // ---------------- Knien (Letzte Chance) und Humpeln ----------------
+    // ---------------- Aufgesetzte Fuesse: stehen bleiben, rutschen, nachsetzen ----------------
     const M = this.mods;
     const kn = M.kneel;
+    this.updatePlants(dt, Math.max(amp, turn, kn));
+
     if (kn > 0.001) {
       const fL = this.feet[0]!;
       const fR = this.feet[1]!;
@@ -419,7 +470,9 @@ export class FighterAnimator {
     const stepBob = -Math.abs(Math.sin(TAU * psL)) * 0.012 * turn * (1 - amp);
     const baseY = this.rest.hips!.y - 0.035 - 0.012 * amp - 0.035 * run - 0.004 * idle * (1 + shift) - 0.012 * this.exertion - 0.014 * Math.min(1, Math.abs(this.accF) / 6);
     if (this.first) this.hipsSpring.reset(baseY);
-    const hy = this.hipsSpring.update(baseY, dt) + walkBob + runBob + stepBob;
+    // leichtes Federn im Kampfstand (auf den Fussballen)
+    const bounce = -(0.5 + 0.5 * Math.sin(this.time * 8.2)) * 0.007 * idle * (1 - smooth01(kn * 3));
+    const hy = this.hipsSpring.update(baseY, dt) + walkBob + runBob + stepBob + bounce;
     const swayX = (-Math.sin(TAU * psL) * 0.028 * amp * (1 - 0.6 * run) * (1 - Math.abs(side))) + idle * 0.022 * shift;
 
     const leanT = -(0.06 * amp * Math.max(0, fwdness) + 0.2 * run) + 0.03 * amp * Math.max(0, -fwdness) - clamp(this.accF, -6, 6) * 0.022;
@@ -501,6 +554,89 @@ export class FighterAnimator {
     // ---------------- Beine (IK) ----------------
     this.solveLeg(this.legL, this.feet[0]!, hips);
     this.solveLeg(this.legR, this.feet[1]!, hips);
+  }
+
+  private updatePlants(dt: number, busy: number): void {
+    const M = this.mods;
+    const pw = 1 - smooth01(busy / 0.6); // Gewicht der Aufsetz-Logik (Gehen/Knien uebernehmen sonst)
+    const dx = this.rootDX;
+    const dz = this.rootDZ;
+    this.rootDX = 0;
+    this.rootDZ = 0;
+    const spd = Math.hypot(dx, dz) / dt;
+    // schneller Schub (Rueckstoss): die Fuesse rutschen teilweise mit
+    const slideT = clamp((spd - 1.4) / 2.2, 0, 0.8);
+    this.slide = approach(this.slide, slideT, slideT > this.slide ? 30 : 6, dt);
+
+    // Tippelschritte im Stand: alle paar Sekunden ein Fuss leicht neu gesetzt
+    if (M.idleShuffle && pw > 0.9) {
+      this.shuffleT -= dt;
+      if (this.shuffleT <= 0) {
+        this.shuffleT = 1.4 + Math.random() * 2.2;
+        const f = this.plants[this.shuffleFoot]!;
+        f.jx = (Math.random() * 2 - 1) * 0.03;
+        f.jz = (Math.random() * 2 - 1) * 0.045;
+        this.shuffleFoot = 1 - this.shuffleFoot;
+      }
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const P = this.plants[i]!;
+      const other = this.plants[1 - i]!;
+      const tx = M.footTX[i]! + P.jx;
+      const tz = M.footTZ[i]! + P.jz;
+      if (pw < 0.25) {
+        // Gehen/Knien: der Gangzyklus fuehrt die Fuesse
+        P.cx = tx;
+        P.cz = tz;
+        P.stepT = -1;
+        M.stepNow[i] = false;
+        continue;
+      }
+      const held = M.holdFoot === i;
+      if (P.stepT < 0) {
+        // steht: bleibt in der Welt (rutscht bei starkem Schub ein Stueck mit)
+        const k = held ? 1 : 1 - this.slide;
+        P.cx -= dx * k;
+        P.cz -= dz * k;
+        const dist = Math.hypot(tx - P.cx, tz - P.cz);
+        const want = M.stepNow[i] || (!held && dist > 0.055 && other.stepT < 0);
+        if (want) {
+          P.stepT = 0;
+          P.sx = P.cx;
+          P.sz = P.cz;
+          P.dur = M.stepNow[i] ? M.stepNowDur : clamp(0.17 + dist * 0.3, 0.17, 0.3);
+          P.h = clamp(0.025 + dist * 0.22, 0.025, 0.09);
+          M.stepNow[i] = false;
+        }
+      }
+      if (P.stepT >= 0) {
+        // Schritt: Startpunkt bleibt in der Welt, Ziel bewegt sich mit der Figur
+        P.sx -= dx;
+        P.sz -= dz;
+        P.stepT += dt;
+        const u = clamp(P.stepT / P.dur, 0, 1);
+        const e = smooth01(u);
+        P.cx = P.sx + (tx - P.sx) * e;
+        P.cz = P.sz + (tz - P.sz) * e;
+        if (u >= 1) P.stepT = -1;
+      }
+      // nicht zu weit auseinander (Schutz vor Ueberdehnung)
+      P.cx = clamp(P.cx, -0.25, 0.25);
+      P.cz = clamp(P.cz, -0.5, 0.55);
+      const st = this.feet[i]!;
+      const u = P.stepT >= 0 ? clamp(P.stepT / P.dur, 0, 1) : 0;
+      st.x += P.cx * pw;
+      st.z += P.cz * pw;
+      if (P.stepT >= 0) {
+        const lift = Math.sin(Math.PI * u) * P.h * pw;
+        st.lift += lift;
+        st.pitch += (-0.35 * Math.sin(Math.PI * Math.min(1, u * 1.6)) + 0.2 * smooth01((u - 0.6) / 0.4)) * pw;
+      } else if (this.slide > 0.05) {
+        st.pitch += 0.12 * this.slide * pw; // Fersen rutschen: Zehen leicht hoch
+      }
+      st.toe = st.pitch < 0 ? Math.min(0.9, -st.pitch) : 0;
+    }
   }
 
   private setArm(A: ArmBones, guard: ArmPose, runP: ArmPose, run: number, swing: number, tip: number, br: number, sgn: number): void {

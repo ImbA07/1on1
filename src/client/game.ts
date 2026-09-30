@@ -5,6 +5,8 @@ import type { Net } from './net.js';
 import type { NetEvent, NetMatch, PlayerInfo, ServerMessage } from '../shared/protocol.js';
 import { applyNet } from '../shared/netstate.js';
 import { DirectionPicker } from './direction.js';
+import { Effects } from './fx.js';
+import { Sfx } from './sfx.js';
 import { SPAWNS, TICK, newSimState, stepPlayer, type MoveInput, type SimState } from '../shared/sim.js';
 import { weaponOf, windupNeed } from '../shared/combat.js';
 import { Act, HP_MAX } from '../shared/weapons.js';
@@ -42,6 +44,7 @@ export interface HudHooks {
   onCombat(view: CombatView): void;
   onEvents(events: NetEvent[], youId: string): void;
   onMatch(match: NetMatch, youId: string): void;
+  onNotice?(text: string): void;
 }
 
 interface Snapshot {
@@ -124,6 +127,16 @@ export class Game {
   // Beim Kampfbeginn automatisch auf den Gegner ausrichten: Dann steuert die Maus nur die Richtung
   private preferLock = true;
   private prevPhase = '';
+
+  // Effekte und Ton
+  private readonly fx = new Effects();
+  private readonly sfx = new Sfx();
+  private pendingFx: Array<{ at: number; fn: () => void }> = [];
+  private hitstop = 0; // Sekunden: Zeitlupen-Moment beim Treffer
+  private fovKick = 0;
+  private prevSelfAct: number = Act.IDLE;
+  private prevOppAct: number = Act.IDLE;
+  private tmKey = '';
   private canAct = false;
   private matchKey = '';
   private matchRound = 0;
@@ -154,6 +167,12 @@ export class Game {
     this.arena = buildArena(this.scene);
     this.menuFighter = new Fighter(FIGHTER_COLORS[0]!);
     this.scene.add(this.menuFighter.root);
+    this.scene.add(this.fx.group);
+    try {
+      this.sfx.muted = localStorage.getItem('1on1.mute') === '1';
+    } catch {
+      // Standard: Ton an
+    }
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -178,6 +197,7 @@ export class Game {
     const spawn = SPAWNS[myIndex] ?? SPAWNS[0]!;
     const selfFighter = new Fighter(FIGHTER_COLORS[myIndex % 2]!);
     this.scene.add(selfFighter.root);
+    this.addWorldFx(selfFighter);
     this.self = {
       id: youId,
       fighter: selfFighter,
@@ -193,6 +213,7 @@ export class Game {
       const oppSpawn = SPAWNS[oppIndex] ?? SPAWNS[1]!;
       const oppFighter = new Fighter(FIGHTER_COLORS[oppIndex % 2]!);
       this.scene.add(oppFighter.root);
+      this.addWorldFx(oppFighter);
       this.opp = {
         id: players[oppIndex]!.id,
         fighter: oppFighter,
@@ -223,13 +244,36 @@ export class Game {
     this.blkHeld = false;
     this.selDir = 0;
     this.shake = 0;
+    this.hitstop = 0;
+    this.fovKick = 0;
+    this.pendingFx = [];
+    this.tmKey = '';
+    this.prevSelfAct = Act.IDLE;
+    this.prevOppAct = Act.IDLE;
+    this.fx.clear();
+    this.sfx.setAmbient(true);
     this.hud.onLockOn(false);
     this.hud.onStamina(100, false);
   }
 
+  /** Effekt-Objekte einer Figur (z. B. Schwert-Spur), falls sie welche hat, mit in die Szene aufnehmen. */
+  private addWorldFx(f: Fighter): void {
+    const wf = (f as unknown as { worldFx?: THREE.Object3D }).worldFx;
+    if (wf) this.scene.add(wf);
+  }
+
+  private removeWorldFx(f: Fighter): void {
+    (f as unknown as { worldFx?: THREE.Object3D }).worldFx?.removeFromParent();
+  }
+
   leaveArena(): void {
+    if (this.self) this.removeWorldFx(this.self.fighter);
+    if (this.opp) this.removeWorldFx(this.opp.fighter);
     this.self?.fighter.dispose();
     this.opp?.fighter.dispose();
+    this.fx.clear();
+    this.sfx.setAmbient(false);
+    this.pendingFx = [];
     this.self = null;
     this.opp = null;
     this.lockOn = false;
@@ -266,6 +310,15 @@ export class Game {
       this.hud.onLockOn(true);
     }
     this.prevPhase = phase;
+    // Countdown: Trommelschlaege, Kampfbeginn: Horn
+    if (msg.match) {
+      const tk = `${msg.match.ph}|${msg.match.tm}`;
+      if (tk !== this.tmKey) {
+        if (msg.match.ph === 'countdown') this.sfx.drum(msg.match.tm <= 1);
+        else if (msg.match.ph === 'fight' && !this.tmKey.startsWith('fight')) this.sfx.horn(false);
+        this.tmKey = tk;
+      }
+    }
     this.matchPhase = msg.match?.ph ?? '';
     this.matchWinner = msg.match && msg.match.ld >= 0 ? (msg.match.ids[msg.match.ld] ?? '') : '';
     if (msg.match) {
@@ -278,6 +331,7 @@ export class Game {
       if (m.round !== this.matchRound) {
         // Neue Runde: Kamera wieder zum Gegner ausrichten
         this.matchRound = m.round;
+        this.fx.clear();
         this.camYaw = this.self.spawnYaw;
         this.lookPitch = -0.12;
         this.lockOn = false;
@@ -287,6 +341,7 @@ export class Game {
     if (msg.ev.length) {
       for (const e of msg.ev) if ((e.k === 'hit' && e.d === youId) || (e.k === 'break' && e.d === youId)) this.shake = 1;
       this.hud.onEvents(msg.ev, youId);
+      this.dispatchEvents(msg.ev, youId);
     }
 
     // Zuerst den Gegner aktualisieren: Das Neuabspielen unten rechnet mit dessen neuester Position
@@ -338,6 +393,16 @@ export class Game {
   private bindInput(): void {
     window.addEventListener('keydown', (e) => {
       if (this.isTyping(e)) return;
+      this.sfx.unlock();
+      if (e.code === 'KeyM' && !e.repeat) {
+        this.sfx.setMuted(!this.sfx.muted);
+        try {
+          localStorage.setItem('1on1.mute', this.sfx.muted ? '1' : '0');
+        } catch {
+          // nicht schlimm
+        }
+        this.hud.onNotice?.(this.sfx.muted ? 'Ton aus (M)' : 'Ton an (M)');
+      }
       if (this.mode === 'arena' && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();
       }
@@ -361,6 +426,7 @@ export class Game {
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
+      this.sfx.unlock();
       if (this.mode !== 'arena') return;
       if (e.button === 1) {
         e.preventDefault();
@@ -526,9 +592,17 @@ export class Game {
     cp.dazeT = p.dazeT;
     cp.outcome = this.outcomeFor(self.id);
     self.fighter.setCombat(cp);
-    self.fighter.animate(dt, p.vx, p.vz, this.camYaw, p.sprinting);
+    // Zeitlupen-Moment beim Treffer: Die Figuren-Animation laeuft kurz fast still
+    const animDt = this.hitstop > 0 ? dt * 0.06 : dt;
+    this.hitstop = Math.max(0, this.hitstop - dt);
+    self.fighter.animate(animDt, p.vx, p.vz, this.camYaw, p.sprinting);
+    if (p.act === Act.STRIKE && this.prevSelfAct !== Act.STRIKE) this.sfx.swoosh(0, 1);
+    this.prevSelfAct = p.act;
 
-    this.updateOpponent(dt, now);
+    this.updateOpponent(dt, now, animDt);
+    this.runPendingFx(now);
+    this.fx.update(dt);
+    this.fovKick *= Math.exp(-dt * 8);
     this.updateCamera(self, dt);
 
     const opp = this.opp;
@@ -572,7 +646,7 @@ export class Game {
     this.hud.onStamina(self.pred.stamina, self.pred.exhausted);
   }
 
-  private updateOpponent(dt: number, now: number): void {
+  private updateOpponent(dt: number, now: number, animDt: number): void {
     const opp = this.opp;
     if (!opp || opp.snaps.length === 0) return;
 
@@ -604,7 +678,7 @@ export class Game {
     opp.lastX = x;
     opp.lastZ = z;
     opp.fighter.setPosition(x, z, yaw);
-    opp.fighter.animate(dt, opp.vx, opp.vz, yaw, opp.sprinting);
+    opp.fighter.animate(animDt, opp.vx, opp.vz, yaw, opp.sprinting);
   }
 
   /** Rundenausgang aus Sicht eines Spielers: 1 gewonnen, -1 verloren, 0 laeuft. */
@@ -642,6 +716,8 @@ export class Game {
     cp.dazeT = s.dz;
     cp.outcome = this.outcomeFor(opp.id);
     opp.fighter.setCombat(cp);
+    if (s.ac === Act.STRIKE && this.prevOppAct !== Act.STRIKE) this.sfx.swoosh(this.panFor(opp.lastX, opp.lastZ), 1);
+    this.prevOppAct = s.ac;
   }
 
   private updateCamera(self: SelfState, dt: number): void {
@@ -674,11 +750,140 @@ export class Game {
       cz += (Math.random() - 0.5) * a;
       this.shake = Math.max(0, this.shake - dt * 3);
     }
+    const fov = 60 + this.fovKick;
+    if (Math.abs(fov - this.camera.fov) > 0.02) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(tx + vx * 10, ty + vy * 10, tz + vz * 10);
   }
 
+  // ---------------------------------------------------------------- Effekte und Ton
+
+  private posOf(id: string): { x: number; z: number } {
+    if (this.self && id === this.self.id) return { x: this.self.renderX, z: this.self.renderZ };
+    if (this.opp && id === this.opp.id) return { x: this.opp.lastX, z: this.opp.lastZ };
+    return { x: 0, z: 0 };
+  }
+
+  /** Links/rechts-Position einer Schallquelle fuer den Ton (-1 links .. 1 rechts). */
+  private panFor(x: number, z: number): number {
+    const cp = this.camera.position;
+    const dx = x - cp.x;
+    const dz = z - cp.z;
+    const d = Math.max(1, Math.hypot(dx, dz));
+    return clamp(((dx * Math.cos(this.camYaw) + dz * -Math.sin(this.camYaw)) / d) * 0.9, -1, 1);
+  }
+
+  private schedule(delayMs: number, fn: () => void): void {
+    if (delayMs <= 0) fn();
+    else this.pendingFx.push({ at: performance.now() + delayMs, fn });
+  }
+
+  private runPendingFx(now: number): void {
+    if (this.pendingFx.length === 0) return;
+    const rest: Array<{ at: number; fn: () => void }> = [];
+    for (const p of this.pendingFx) {
+      if (p.at <= now) p.fn();
+      else rest.push(p);
+    }
+    this.pendingFx = rest;
+  }
+
+  private impact(id: string, kind: string, info: Record<string, unknown>): void {
+    const f = this.self && id === this.self.id ? this.self.fighter : this.opp && id === this.opp.id ? this.opp.fighter : null;
+    (f as unknown as { playImpact?: (k: string, i: Record<string, unknown>) => void } | null)?.playImpact?.(kind, info);
+  }
+
+  /**
+   * Ereignisse vom Server in Effekte, Ton und Figurenreaktionen umsetzen. Ereignisse, bei denen
+   * der Gegner die Wirkung "traegt", werden um die Anzeigeverzoegerung (110 ms) verschoben,
+   * damit sie zu seiner sichtbaren Pose passen.
+   */
+  private dispatchEvents(events: NetEvent[], youId: string): void {
+    const ZONE_Y = [1.7, 1.3, 1.35, 0.6];
+    for (const e of events) {
+      if (e.k === 'hit') {
+        const delay = e.d === youId ? 0 : OPPONENT_DELAY_MS;
+        this.schedule(delay, () => {
+          const a = this.posOf(e.a);
+          const d = this.posOf(e.d);
+          const dx = d.x - a.x;
+          const dz = d.z - a.z;
+          const l = Math.hypot(dx, dz) || 1;
+          const nx = dx / l;
+          const nz = dz / l;
+          const heavy = e.fin === true || e.z === 0;
+          this.fx.bleed(d.x - nx * 0.15, ZONE_Y[e.z] ?? 1.3, d.z - nz * 0.15, nx, nz, 12 + Math.round(e.dmg / 2) + (e.fin ? 14 : 0), e.fin ? 1.5 : 1);
+          this.sfx.thud(this.panFor(d.x, d.z), e.z, heavy);
+          this.hitstop = Math.max(this.hitstop, e.fin ? 0.16 : e.z === 0 ? 0.11 : 0.08);
+          if (e.a === youId) this.fovKick = -2.5;
+          else if (e.d === youId) this.fovKick = 3.5;
+          this.impact(e.d, 'hit', { zone: e.z, dirX: nx, dirZ: nz, heavy });
+        });
+      } else if (e.k === 'block' || e.k === 'parry') {
+        const delay = e.d === youId ? 0 : OPPONENT_DELAY_MS;
+        this.schedule(delay, () => {
+          const a = this.posOf(e.a);
+          const d = this.posOf(e.d);
+          const dx = d.x - a.x;
+          const dz = d.z - a.z;
+          const l = Math.hypot(dx, dz) || 1;
+          const nx = dx / l;
+          const nz = dz / l;
+          const parry = e.k === 'parry';
+          // Aufprallpunkt: vor dem Blockenden, auf Schildhoehe
+          this.fx.spark(d.x - nx * 0.55, 1.3, d.z - nz * 0.55, -nx, -nz, parry ? 38 : 18, parry ? 1.4 : 1);
+          this.sfx.clang(this.panFor(d.x, d.z), parry);
+          this.hitstop = Math.max(this.hitstop, parry ? 0.13 : 0.05);
+          if (parry) this.fovKick = e.d === youId ? -4 : 3;
+          this.impact(e.d, 'block', { dirX: nx, dirZ: nz });
+          if (parry) this.impact(e.a, 'parry', { dirX: -nx, dirZ: -nz });
+        });
+      } else if (e.k === 'break') {
+        this.schedule(e.d === youId ? 0 : OPPONENT_DELAY_MS, () => {
+          const d = this.posOf(e.d);
+          this.fx.spark(d.x, 1.3, d.z, 0, 0, 26, 1.1);
+          this.sfx.crack(this.panFor(d.x, d.z));
+          this.hitstop = Math.max(this.hitstop, 0.1);
+          this.impact(e.d, 'break', {});
+        });
+      } else if (e.k === 'down') {
+        this.schedule(e.id === youId ? 0 : OPPONENT_DELAY_MS, () => {
+          this.sfx.boom();
+          this.impact(e.id, 'down', {});
+        });
+      } else if (e.k === 'revive') {
+        this.schedule(e.id === youId ? 0 : OPPONENT_DELAY_MS, () => {
+          this.sfx.rise();
+          this.impact(e.id, 'revive', {});
+        });
+      } else if (e.k === 'round') {
+        this.schedule(300, () => this.sfx.horn(false, e.w !== youId));
+      } else if (e.k === 'match') {
+        this.schedule(700, () => this.sfx.horn(true, e.w !== youId));
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- Debug
+
+  /** Nur zum Testen (mit ?debug): loest Effekte aus, als haette der Server das Ereignis geschickt. */
+  debugEvents(kind: 'hit' | 'block' | 'parry' | 'break', zone = 1): void {
+    if (!this.self || !this.opp) return;
+    const me = this.self.id;
+    const other = this.opp.id;
+    const ev: NetEvent[] =
+      kind === 'hit'
+        ? [{ k: 'hit', a: me, d: other, z: zone, dmg: 20 }]
+        : kind === 'block'
+          ? [{ k: 'block', a: me, d: other }]
+          : kind === 'parry'
+            ? [{ k: 'parry', a: me, d: other }]
+            : [{ k: 'break', d: other }];
+    this.dispatchEvents(ev, me);
+  }
 
   debugInfo(): unknown {
     return {

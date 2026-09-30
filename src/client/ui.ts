@@ -325,6 +325,7 @@ export class UI {
       h('span', {}, 'Rechte Maustaste halten  blocken'),
       h('span', {}, 'Block-Taste beim Ausholen  Finte'),
       h('span', {}, 'Mausrad-Klick  Fokus an/aus (beim Start an)'),
+      h('span', {}, 'M  Ton an/aus'),
       h('span', {}, 'Esc  Menü'),
     );
 

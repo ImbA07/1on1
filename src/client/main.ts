@@ -14,6 +14,7 @@ const game = new Game(canvas, net, {
   onCombat: (v) => ui.updateCombat(v),
   onEvents: (ev, youId) => ui.showEvents(ev, youId),
   onMatch: (m, youId) => ui.updateMatch(m, youId),
+  onNotice: (text) => ui.toast(text),
 });
 
 if (new URLSearchParams(location.search).has('debug')) {
