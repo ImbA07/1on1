@@ -577,16 +577,19 @@ body {
 }
 .last-chance.own { color: #ffb0a0; border-color: #c24a3a; animation: pulse 0.7s ease-in-out infinite alternate; }
 
-/* Richtungsring */
+/* Richtungsring: sitzt um die Bildmitte (Fadenkreuz), damit man ihn parallel zum Gegner im Blick hat */
 .ring {
   position: absolute;
   left: 50%;
-  bottom: 56px;
-  width: 116px;
-  transform: translateX(-50%);
+  top: 50%;
+  width: 132px;
+  transform: translate(-50%, -50%);
   --p: 0;
+  opacity: 1;
+  transition: opacity 0.15s;
   pointer-events: none;
 }
+.ring.idle:not(.hinting):not(.held) { opacity: 0.32; }
 .ring-svg { width: 100%; display: block; overflow: visible; }
 .ring.off { opacity: 0.35; }
 .wedge {
@@ -607,7 +610,8 @@ body {
 .ring-label {
   position: absolute;
   left: 50%;
-  bottom: -20px;
+  top: 100%;
+  margin-top: 2px;
   transform: translateX(-50%);
   font-size: 12px;
   font-weight: 700;

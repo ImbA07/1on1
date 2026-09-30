@@ -335,7 +335,8 @@ Umgesetzt und als Startwerte eingestellt (Schwert & Schild, schwere Rüstung, mi
 - **Block:** Rechte Maustaste halten, Maus wählt die Richtung. Der Block wirkt nach 0,13 s. Ein Treffer in den ersten 0,17 s nach dem Aufbau ist ein **Perfect Block**: Der Angreifer taumelt 0,8 s, der Blockende zahlt keine Ausdauer.
 - **Richtungen sind gespiegelt:** Was beim Angreifer von links kommt, erscheint beim Verteidiger von rechts. Der Verteidiger deckt die Seite, auf der er das Schwert auf seinem Bildschirm sieht. Am Richtungsring zeigt eine orange Markierung als Lernhilfe die richtige Block-Seite.
 - **Finte:** Block-Taste während des Ausholens bricht den Angriff ab (8 Ausdauer, kurze Erholung). Richtungswechsel beim Ausholen kostet Zeit und 3 Ausdauer.
-- **Kamera:** Während Angriff oder Block hält die Kamera still (die Maus wählt die Richtung). Mit dem Fokus auf den Gegner folgt sie ihm trotzdem.
+- **Kamera und Richtung gleichzeitig:** Die Kamera dreht sich beim Ausholen und Blocken normal mit der Maus. Die Richtung ergibt sich aus der letzten deutlichen Mausbewegung (ca. 0,18 s Rückblick): hoch = oben, links = links, rechts = rechts. Bei Stillstand bleibt die letzte Richtung. Mit dem Fokus auf den Gegner steuert die Maus nur noch die Richtung.
+- **Anzeige:** Der Richtungsring (eigene Richtung, Zustand und die Block-Seite gegen den Angriff des Gegners) sitzt um die Bildmitte.
 - **Trefferzonen:** Von oben Kopf (x1,5), seitlich Torso (x1,0), Arm beim Ausholen des Gegners (x0,7), Bein in der Erholung (x0,7). Schwere Rüstung lässt 60 % des Schadens durch. Grundschaden 24, 100 Lebenspunkte.
 - **Nachwirkungen:** Kopf = 0,5 s benommen, Arm = 3 s langsameres Ausholen, Bein = 3 s langsamer laufen. Ein Treffer unterbricht Ausholen und Block.
 - **Ausdauer:** Ausholen 10, geblockter Schlag kostet den Blockenden 20 (Schild halbiert auf 10). Ist sie leer, ist man erschöpft (langsamer, längeres Ausholen, Block wird durchbrochen).

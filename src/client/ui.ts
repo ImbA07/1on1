@@ -321,7 +321,7 @@ export class UI {
       h('strong', {}, 'Steuerung'),
       h('span', {}, 'W A S D  bewegen, Shift  rennen'),
       h('span', {}, 'Linke Maustaste halten  ausholen'),
-      h('span', {}, 'Maus dabei bewegen  Richtung wählen'),
+      h('span', {}, 'Maus dabei nach oben / links / rechts  Richtung'),
       h('span', {}, 'Taste loslassen  zuschlagen'),
       h('span', {}, 'Rechte Maustaste halten  blocken'),
       h('span', {}, 'Block-Taste beim Ausholen  Finte'),
@@ -407,7 +407,7 @@ export class UI {
     const key = `${state}|${shown}|${prog.toFixed(2)}|${v.atkHeld ? 1 : 0}${v.blkHeld ? 1 : 0}|${oppHint}|${v.canAct ? 1 : 0}`;
     if (key !== this.lastRingKey) {
       this.lastRingKey = key;
-      this.ring.className = `ring ${state}${v.canAct ? '' : ' off'}`;
+      this.ring.className = `ring ${state}${v.canAct ? '' : ' off'}${oppHint >= 0 ? ' hinting' : ''}${v.atkHeld || v.blkHeld ? ' held' : ''}`;
       this.ring.style.setProperty('--p', prog.toFixed(2));
       this.wedges.forEach((w, i) => w.classList.toggle('sel', i === shown));
       this.hints.forEach((a, i) => a.classList.toggle('on', i === oppHint));

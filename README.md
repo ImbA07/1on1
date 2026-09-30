@@ -12,7 +12,7 @@ Das ganze Konzept steht in [KONZEPT.md](KONZEPT.md).
 | W A S D | Bewegen |
 | Shift | Rennen (kostet Ausdauer) |
 | Maus | Umschauen (erst ins Bild klicken) |
-| Linke Maustaste halten | Ausholen. Dabei die Maus nach **oben / links / rechts** bewegen, um die Richtung zu wählen. **Loslassen = zuschlagen** |
+| Linke Maustaste halten | Ausholen. Dabei die Maus nach **oben / links / rechts** bewegen (auch kurz davor), um die Richtung zu wählen. **Loslassen = zuschlagen** |
 | Rechte Maustaste halten | Blocken. Die Maus wählt die Richtung, aus der du den Schlag erwartest |
 | Block-Taste beim Ausholen | Finte (Angriff abbrechen, kostet Ausdauer) |
 | Mausrad-Klick | Fokus auf den Gegner an/aus |
@@ -20,7 +20,7 @@ Das ganze Konzept steht in [KONZEPT.md](KONZEPT.md).
 
 **Wichtig beim Blocken:** Du musst die Seite decken, auf der du das Schwert des Gegners auf deinem Bildschirm siehst. Greift er von *seiner* linken Seite an, kommt der Schlag bei dir von *rechts*. Die orange Markierung am Ring zeigt dir aktuell die richtige Block-Richtung. Blockst du erst ganz kurz vor dem Treffer, ist es ein **Perfect Block**: Der Angreifer taumelt und du verlierst keine Ausdauer.
 
-Während du ausholst oder blockst, bleibt die Kamera stehen (nutze den Fokus auf den Gegner, damit sie ihm folgt).
+Die Kamera dreht sich beim Ausholen und Blocken normal weiter. Die Richtung ergibt sich aus der letzten deutlichen Mausbewegung: nach oben = oben, nach links = links, nach rechts = rechts. Steht die Maus still, bleibt die letzte Richtung. Mit dem Fokus auf den Gegner (Mausrad-Klick) folgt die Kamera dem Gegner selbst, und die Maus wählt nur noch die Richtung. Die Richtungsanzeige sitzt um die Bildmitte.
 
 ## Lokal starten (Entwicklung)
 

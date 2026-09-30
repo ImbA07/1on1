@@ -115,8 +115,11 @@ export class Game {
   // Kampf-Eingabe: linke Maustaste = Angriff, rechte = Block, Maus bewegen = Richtung waehlen
   private atkHeld = false;
   private blkHeld = false;
-  private dirX = 0;
-  private dirY = 0;
+  // Richtungswahl: Die Richtung folgt der letzten deutlichen Mausbewegung (kurzer Rueckblick),
+  // waehrend die Kamera sich normal weiterdreht.
+  private motionX = 0;
+  private motionY = 0;
+  private motionAt = 0;
   private selDir = 0;
   private canAct = false;
   private matchKey = '';
@@ -339,14 +342,12 @@ export class Game {
 
     window.addEventListener('mousemove', (e) => {
       if (this.mode !== 'arena' || !this.pointerLocked) return;
-      if (this.atkHeld || this.blkHeld) {
-        // Waehrend Angriff/Block waehlt die Maus die Richtung. Die Kamera bleibt stehen
-        // (mit Fokus auf den Gegner folgt sie ihm trotzdem).
-        this.pickDirection(e.movementX, e.movementY);
-        return;
-      }
+      // Die Kamera dreht IMMER mit der Maus (mit Fokus auf den Gegner folgt sie ihm selbst) ...
       if (!this.lockOn) this.camYaw -= e.movementX * MOUSE_SENSITIVITY;
       this.lookPitch = clamp(this.lookPitch - e.movementY * MOUSE_SENSITIVITY, -0.85, 0.45);
+      // ... und dieselbe Bewegung waehlt beim Angriff/Block die Richtung.
+      this.trackMotion(e.movementX, e.movementY);
+      if (this.atkHeld || this.blkHeld) this.pickDirection();
     });
 
     this.canvas.addEventListener('mousedown', (e) => {
@@ -359,13 +360,11 @@ export class Game {
       } else if (e.button === 0) {
         e.preventDefault();
         this.atkHeld = true;
-        this.dirX = 0;
-        this.dirY = 0;
+        this.pickDirection(); // auch eine Wischbewegung kurz VOR dem Klick zaehlt
       } else if (e.button === 2) {
         e.preventDefault();
         this.blkHeld = true;
-        this.dirX = 0;
-        this.dirY = 0;
+        this.pickDirection();
       }
     });
     window.addEventListener('mouseup', (e) => {
@@ -397,24 +396,27 @@ export class Game {
     this.hud.onLockOn(this.lockOn);
   }
 
+  /** Merkt sich die letzten Mausbewegungen (klingen in ca. 0,18 s ab). */
+  private trackMotion(mx: number, my: number): void {
+    const now = performance.now();
+    const decay = Math.exp(-(now - this.motionAt) / 180);
+    this.motionX = this.motionX * decay + mx;
+    this.motionY = this.motionY * decay + my;
+    this.motionAt = now;
+  }
+
   /**
-   * Richtung waehlen: Die Mausbewegung waehrend Angriff/Block bildet einen kleinen Vektor.
-   * Hoch = oben, links = links, rechts = rechts. Nach unten zaehlt nicht.
+   * Richtung aus der letzten deutlichen Mausbewegung: hoch = oben, links = links, rechts = rechts.
+   * Nach unten oder wenig Bewegung aendert nichts (die letzte Richtung bleibt).
    */
-  private pickDirection(mx: number, my: number): void {
-    const R = 60;
-    this.dirX += mx;
-    this.dirY += my;
-    const len = Math.hypot(this.dirX, this.dirY);
-    if (len > R) {
-      this.dirX = (this.dirX / len) * R;
-      this.dirY = (this.dirY / len) * R;
-    }
-    const T = 20;
-    const ax = Math.abs(this.dirX);
-    const ay = Math.abs(this.dirY);
-    if (this.dirY < -T && ay >= ax * 0.7) this.selDir = 0;
-    else if (ax > T && ax > ay * 0.7) this.selDir = this.dirX < 0 ? 1 : 2;
+  private pickDirection(): void {
+    const decay = Math.exp(-(performance.now() - this.motionAt) / 180);
+    const x = this.motionX * decay;
+    const y = this.motionY * decay;
+    const T = 14;
+    const ax = Math.abs(x);
+    if (-y > T && -y >= ax * 0.6) this.selDir = 0;
+    else if (ax > T && ax > Math.abs(y) * 0.8) this.selDir = x < 0 ? 1 : 2;
   }
 
   private readInput(): MoveInput {
